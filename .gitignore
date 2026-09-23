@@ -1,0 +1,13 @@
+# dependencies
+node_modules/
+
+# runtime data (created automatically on first run)
+db.json
+uploads/
+
+# env & logs
+.env
+*.log
+
+# OS
+.DS_Store

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PairFit — What goes with what</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="view-auth" class="view">
+  <div class="auth-card">
+    <h1>PairFit</h1>
+    <p class="tagline">Upload your clothes. We tell you what goes with what.</p>
+    <div class="tabs">
+      <button id="tab-login" class="tab active">Login</button>
+      <button id="tab-register" class="tab">Register</button>
+    </div>
+    <div id="form-login">
+      <input id="login-email" type="email" placeholder="Email" autocomplete="email">
+      <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="primary" onclick="doLogin()">Login</button>
+    </div>
+    <div id="form-register" class="hidden">
+      <input id="reg-name" type="text" placeholder="Your name" autocomplete="name">
+      <input id="reg-email" type="email" placeholder="Email" autocomplete="email">
+      <input id="reg-password" type="password" placeholder="Password (min 4 chars)" autocomplete="new-password">
+      <button class="primary" onclick="doRegister()">Create account</button>
+    </div>
+    <p id="auth-error" class="error"></p>
+    <p class="fineprint">Your wardrobe is saved on the server — it survives refresh, cache-clear and device switches.</p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="view-app" class="view hidden">
+  <header>
+    <div class="logo">PairFit</div>
+    <nav>
+      <button id="nav-closet" class="nav-btn active" onclick="showView('closet')">My Closet</button>
+      <button id="nav-style" class="nav-btn" onclick="showView('style')">Style This</button>
+      <button class="nav-btn" onclick="logout()">Logout</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-closet">
+      <div class="upload-card">
+        <h2>Add a clothing item</h2>
+        <input type="file" id="photo-input" accept="image/*">
+        <input type="text" id="item-name" placeholder="Name (e.g. Blue denim jeans)">
+        <select id="item-category">
+          <option value="tshirt">T-Shirt</option>
+          <option value="shirt">Shirt</option>
+          <option value="top">Top</option>
+          <option value="kurta">Kurta</option>
+          <option value="sweater">Sweater</option>
+          <option value="jeans">Jeans</option>
+          <option value="pants">Pants / Trousers</option>
+          <option value="skirt">Skirt</option>
+          <option value="shorts">Shorts</option>
+          <option value="jacket">Jacket</option>
+          <option value="hoodie">Hoodie</option>
+          <option value="dress">Dress</option>
+        </select>
+        <button class="primary" onclick="addItem()">Add to closet</button>
+        <p id="upload-status" class="status"></p>
+      </div>
+      <div id="closet-grid" class="grid"></div>
+    </section>
+
+    <section id="view-style" class="hidden">
+      <h2>Pick an item, get matches</h2>
+      <div id="style-picker" class="grid small"></div>
+      <div id="style-results"></div>
+    </section>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
