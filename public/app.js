@@ -1,6 +1,9 @@
-/* PairFit frontend — auth, closet, and "style this" recommendations */
-let token = localStorage.getItem('pairfit_token');
+/* PairFit frontend — Supabase auth, closet, and "style this" recommendations.
+   Auth (register/login/Google) is handled by Supabase directly.
+   The API only serves wardrobe data + recommendations, verified via the Supabase JWT. */
+let sb = null; // supabase-js client
 let closet = [];
+let me = null;
 
 const CATEGORY_LABELS = {
   tshirt: 'T-Shirt', shirt: 'Shirt', top: 'Top', kurta: 'Kurta', sweater: 'Sweater',
@@ -15,62 +18,96 @@ function esc(s) {
 }
 
 async function api(path, opts = {}) {
+  const { data: { session } } = await sb.auth.getSession();
   const res = await fetch(path, {
     ...opts,
-    headers: { ...(opts.headers || {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) }
+    headers: {
+      ...(opts.headers || {}),
+      ...(session ? { Authorization: 'Bearer ' + session.access_token } : {})
+    }
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Something went wrong');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Something went wrong');
+    err.upgrade = !!data.upgrade;
+    throw err;
+  }
   return data;
 }
 
 /* ---------------- auth ---------------- */
 function showAuth(which) {
   document.getElementById('tab-login').classList.toggle('active', which === 'login');
-  document.getElementById('tab-register').classList.toggle('active', which === 'register');
+  document.getElementById('tab-register').classList.toggle('active', which !== 'login');
   document.getElementById('form-login').classList.toggle('hidden', which !== 'login');
   document.getElementById('form-register').classList.toggle('hidden', which !== 'register');
   document.getElementById('auth-error').textContent = '';
+}
+
+function authError(msg) {
+  document.getElementById('auth-error').textContent = msg;
 }
 
 async function doRegister() {
   const name = document.getElementById('reg-name').value.trim();
   const email = document.getElementById('reg-email').value.trim();
   const password = document.getElementById('reg-password').value;
-  try {
-    const data = await api('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password })
-    });
-    loginSuccess(data.token);
-  } catch (e) { document.getElementById('auth-error').textContent = e.message; }
+  if (!email || !password) { authError('Email and password are required'); return; }
+  const { data, error } = await sb.auth.signUp({
+    email, password, options: { data: { name } }
+  });
+  if (error) { authError(error.message); return; }
+  if (!data.session) {
+    authError('Account created! Check your email to confirm, then login.');
+    showAuth('login');
+    return;
+  }
+  enterApp();
 }
 
 async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
-  try {
-    const data = await api('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    loginSuccess(data.token);
-  } catch (e) { document.getElementById('auth-error').textContent = e.message; }
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) authError(error.message);
+  else enterApp();
 }
 
-function loginSuccess(t) {
-  token = t;
-  localStorage.setItem('pairfit_token', t);
-  boot();
+async function doGoogleLogin() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin }
+  });
+  if (error) authError(error.message);
 }
 
-function logout() {
-  token = null;
-  localStorage.removeItem('pairfit_token');
+async function logout() {
+  await sb.auth.signOut();
+  showLogin();
+}
+
+function showLogin() {
   document.getElementById('view-app').classList.add('hidden');
   document.getElementById('view-auth').classList.remove('hidden');
+}
+
+async function enterApp() {
+  document.getElementById('view-auth').classList.add('hidden');
+  document.getElementById('view-app').classList.remove('hidden');
+  showView('closet');
+  try {
+    me = await api('/api/me');
+  } catch (e) { me = null; }
+  updatePlanBadge();
+  await loadCloset();
+}
+
+function updatePlanBadge() {
+  const el = document.getElementById('plan-status');
+  if (!el || !me) return;
+  el.textContent = me.isPro
+    ? 'Pro plan — unlimited items'
+    : `${me.itemCount} / ${me.itemLimit} items (Free plan)`;
 }
 
 /* ---------------- views ---------------- */
@@ -111,83 +148,30 @@ function renderCloset() {
 async function deleteItem(id) {
   if (!confirm('Remove this item from your closet?')) return;
   await api('/api/items/' + id, { method: 'DELETE' });
+  if (me) me.itemCount = Math.max(0, me.itemCount - 1);
+  updatePlanBadge();
   await loadCloset();
 }
 
-/* ---------------- color extraction (browser canvas) ---------------- */
-function extractColor(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const size = 120;
-        const c = document.createElement('canvas');
-        c.width = size; c.height = size;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0, size, size);
-        const data = ctx.getImageData(0, 0, size, size).data;
-        let r = 0, g = 0, b = 0, n = 0;
-        // sample the center region to skip photo backgrounds/edges
-        for (let y = Math.floor(size * 0.25); y < size * 0.75; y += 3) {
-          for (let x = Math.floor(size * 0.25); x < size * 0.75; x += 3) {
-            const i = (y * size + x) * 4;
-            r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
-          }
-        }
-        r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
-        URL.revokeObjectURL(img.src);
-        resolve({ hex: rgbToHex(r, g, b), ...rgbToHsl(r, g, b) });
-      } catch (e) { reject(e); }
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
-
-function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
-}
-
-function rgbToHsl(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0;
-  const l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      default: h = (r - g) / d + 4;
-    }
-    h *= 60;
-  }
-  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
-}
-
+/* ---------------- add item (color is extracted server-side now) ---------------- */
 async function addItem() {
   const fileInput = document.getElementById('photo-input');
   const name = document.getElementById('item-name').value.trim();
   const category = document.getElementById('item-category').value;
   const status = document.getElementById('upload-status');
   if (!fileInput.files.length) { status.textContent = 'Please choose a photo first.'; return; }
-  status.textContent = 'Analyzing color…';
+  status.textContent = 'Uploading & analyzing…';
   try {
-    const color = await extractColor(fileInput.files[0]);
     const form = new FormData();
     form.append('photo', fileInput.files[0]);
     form.append('name', name || 'Untitled');
     form.append('category', category);
-    form.append('colorHex', color.hex);
-    form.append('h', color.h);
-    form.append('s', color.s);
-    form.append('l', color.l);
-    status.textContent = 'Uploading…';
-    await api('/api/items', { method: 'POST', body: form });
-    status.textContent = 'Added (' + color.hex + ')';
+    const item = await api('/api/items', { method: 'POST', body: form });
+    status.textContent = 'Added (' + item.colorHex + ')';
     fileInput.value = '';
     document.getElementById('item-name').value = '';
+    if (me) me.itemCount++;
+    updatePlanBadge();
     await loadCloset();
   } catch (e) { status.textContent = 'Error: ' + e.message; }
 }
@@ -236,11 +220,19 @@ async function styleItem(id) {
 document.getElementById('tab-login').onclick = () => showAuth('login');
 document.getElementById('tab-register').onclick = () => showAuth('register');
 
-async function boot() {
-  document.getElementById('view-auth').classList.add('hidden');
-  document.getElementById('view-app').classList.remove('hidden');
-  showView('closet');
-  await loadCloset();
-}
-
-if (token) { boot().catch(() => logout()); }
+(async function boot() {
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) throw new Error('no-config');
+    sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  } catch (e) {
+    document.getElementById('auth-error').textContent =
+      'Could not reach the server. Is the API running with SUPABASE_URL set?';
+    return;
+  }
+  sb.auth.onAuthStateChange((_event, session) => {
+    if (session) enterApp(); else showLogin();
+  });
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) enterApp(); else showLogin();
+})();
