@@ -12,6 +12,7 @@
 
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
@@ -31,17 +32,57 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY env vars — see docs/SUPABASE_COOLIFY.md');
   process.exit(1);
 }
+// normalize: no trailing slash, so prefix replacement stays exact
+const SB_URL = SUPABASE_URL.replace(/\/+$/, '');
+const SB_PROXY_PREFIX = '/sb';
+
+// Public origin of this app as the browser sees it (honors Traefik's
+// X-Forwarded-Proto when TLS is terminated at the edge).
+function publicOrigin(req) {
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
 
 // service_role bypasses RLS; the API enforces per-user isolation itself.
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(SB_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 app.use(cors());
+
+// Same-origin reverse proxy for Supabase (auth/rest/storage). The browser
+// must never call the raw http:// Kong URL directly: on an https:// page the
+// browser blocks those calls as mixed content ("Failed to fetch"). The proxy
+// is a dumb pipe — it forwards the caller's own anon key / user JWT, so RLS
+// still applies exactly as if the client called Supabase directly.
+// Registered BEFORE express.json() so request bodies stream through untouched.
+app.use(SB_PROXY_PREFIX, (req, res) => {
+  const target = new URL(SB_URL);
+  const upstream = http.request(
+    {
+      hostname: target.hostname,
+      port: target.port || 80,
+      path: req.originalUrl.slice(SB_PROXY_PREFIX.length) || '/',
+      method: req.method,
+      headers: { ...req.headers, host: target.host },
+    },
+    (upRes) => {
+      res.writeHead(upRes.statusCode, upRes.headers);
+      upRes.pipe(res);
+    }
+  );
+  upstream.on('error', () => {
+    if (!res.headersSent) res.status(502).json({ error: 'Supabase unreachable' });
+  });
+  req.pipe(upstream);
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Public config for the frontend (anon key is safe to expose by design).
+// supabaseUrl points at the same-origin proxy, never at raw http:// Kong.
 app.get('/api/config', (req, res) => {
-  res.json({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY });
+  res.json({ supabaseUrl: publicOrigin(req) + SB_PROXY_PREFIX, supabaseAnonKey: SUPABASE_ANON_KEY });
 });
 
 // ---------------------------------------------------------------------------
@@ -202,9 +243,12 @@ async function itemCount(userId) {
   return count || 0;
 }
 
-async function signedUrl(photoPath) {
+async function signedUrl(photoPath, publicBase) {
   const { data } = await supabase.storage.from(BUCKET).createSignedUrl(photoPath, SIGNED_URL_TTL);
-  return data ? data.signedUrl : null;
+  if (!data) return null;
+  // Serve storage through the same-origin proxy so <img> tags are never
+  // mixed-content blocked on https:// pages.
+  return data.signedUrl.replace(SB_URL, publicBase + SB_PROXY_PREFIX);
 }
 
 function toItem(row, url) {
@@ -239,8 +283,9 @@ app.get('/api/items', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('items').select('*').eq('user_id', req.user.id).order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: 'Could not load closet' });
+  const base = publicOrigin(req);
   const out = [];
-  for (const row of data) out.push(toItem(row, await signedUrl(row.photo_path)));
+  for (const row of data) out.push(toItem(row, await signedUrl(row.photo_path, base)));
   res.json(out);
 });
 
@@ -287,7 +332,7 @@ app.post('/api/items', auth, upload.single('photo'), async (req, res) => {
       await supabase.storage.from(BUCKET).remove([photoPath]);
       return res.status(500).json({ error: 'Could not save item' });
     }
-    res.json(toItem(data, await signedUrl(photoPath)));
+    res.json(toItem(data, await signedUrl(photoPath, publicOrigin(req))));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Something went wrong' });
@@ -310,7 +355,8 @@ app.get('/api/recommend/:itemId', auth, async (req, res) => {
     .from('items').select('*').eq('user_id', req.user.id);
   if (error) return res.status(500).json({ error: 'Could not load closet' });
   const wardrobe = [];
-  for (const row of data) wardrobe.push(toItem(row, await signedUrl(row.photo_path)));
+  const base = publicOrigin(req);
+  for (const row of data) wardrobe.push(toItem(row, await signedUrl(row.photo_path, base)));
   const item = wardrobe.find(i => i.id === req.params.itemId);
   if (!item) return res.status(404).json({ error: 'Item not found' });
   res.json({ item, recommendations: recommend(item, wardrobe) });
