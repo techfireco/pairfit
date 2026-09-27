@@ -17,26 +17,31 @@ export async function initSupabase() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    const apiBase = getApiBaseUrl();
-    const configRes = await fetch(`${apiBase}/api/config`);
-    if (!configRes.ok) {
-      throw new Error(`Failed to load server config (${configRes.status}) from ${apiBase}`);
-    }
-    const config = await configRes.json();
-    if (!config.supabaseUrl || !config.supabaseAnonKey) {
-      throw new Error('Server returned invalid Supabase configuration');
-    }
+    try {
+      const apiBase = getApiBaseUrl();
+      const configRes = await fetch(`${apiBase}/api/config`);
+      if (!configRes.ok) {
+        throw new Error(`Failed to load server config (${configRes.status}) from ${apiBase}`);
+      }
+      const config = await configRes.json();
+      if (!config.supabaseUrl || !config.supabaseAnonKey) {
+        throw new Error('Server returned invalid Supabase configuration');
+      }
 
-    supabaseClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-      auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false,
-      },
-    });
+      supabaseClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: {
+          storage: AsyncStorage,
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: false,
+        },
+      });
 
-    return supabaseClient;
+      return supabaseClient;
+    } catch (err) {
+      initPromise = null;
+      throw err;
+    }
   })();
 
   return initPromise;

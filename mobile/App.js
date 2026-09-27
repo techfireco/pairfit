@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   SafeAreaView,
   View,
@@ -33,49 +33,56 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [upgradeModalVisible, setUpgradeModalVisible] = useState(false);
 
-  // Initialize Supabase & Session
-  useEffect(() => {
-    let authListener = null;
+  const authSubscriptionRef = useRef(null);
 
-    async function bootstrap() {
-      try {
-        const sb = await initSupabase();
+  // Reusable bootstrap: initializes Supabase, checks session, and registers auth state listener
+  const bootstrap = useCallback(async () => {
+    setInitError('');
+    setInitLoading(true);
+    try {
+      const sb = await initSupabase();
 
-        setOnSessionExpired(() => {
-          setSession(null);
+      setOnSessionExpired(() => {
+        setSession(null);
+        setCloset([]);
+        setProfile(null);
+      });
+
+      // Check active session
+      const { data: { session: existingSession } } = await sb.auth.getSession();
+      setSession(existingSession);
+
+      // Clean up previous subscription if any
+      if (authSubscriptionRef.current?.unsubscribe) {
+        authSubscriptionRef.current.unsubscribe();
+      }
+
+      // Listen for auth state changes
+      const { data: listener } = sb.auth.onAuthStateChange((_event, currentSession) => {
+        setSession(currentSession);
+        if (!currentSession) {
           setCloset([]);
           setProfile(null);
-        });
-
-        // Check active session
-        const { data: { session: existingSession } } = await sb.auth.getSession();
-        setSession(existingSession);
-
-        // Listen for auth state changes
-        const { data: listener } = sb.auth.onAuthStateChange((_event, currentSession) => {
-          setSession(currentSession);
-          if (!currentSession) {
-            setCloset([]);
-            setProfile(null);
-          }
-        });
-        authListener = listener;
-      } catch (err) {
-        console.error('Bootstrap failed:', err);
-        setInitError(err.message || 'Could not connect to PairFit API');
-      } finally {
-        setInitLoading(false);
-      }
+        }
+      });
+      authSubscriptionRef.current = listener?.subscription;
+    } catch (err) {
+      console.error('Bootstrap failed:', err);
+      setInitError(err.message || 'Could not connect to PairFit API');
+    } finally {
+      setInitLoading(false);
     }
+  }, []);
 
+  useEffect(() => {
     bootstrap();
 
     return () => {
-      if (authListener?.subscription) {
-        authListener.subscription.unsubscribe();
+      if (authSubscriptionRef.current?.unsubscribe) {
+        authSubscriptionRef.current.unsubscribe();
       }
     };
-  }, []);
+  }, [bootstrap]);
 
   // Fetch wardrobe data when logged in
   const loadWardrobeData = useCallback(async () => {
@@ -161,16 +168,7 @@ export default function App() {
         <Text style={styles.errorDescription}>{initError}</Text>
         <TouchableOpacity
           style={styles.retryButton}
-          onPress={() => {
-            setInitError('');
-            setInitLoading(true);
-            initSupabase()
-              .then(() => setInitLoading(false))
-              .catch((e) => {
-                setInitError(e.message);
-                setInitLoading(false);
-              });
-          }}
+          onPress={bootstrap}
         >
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
