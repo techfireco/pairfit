@@ -8,3 +8,4 @@ db.json
 *.log
 Dockerfile
 .dockerignore
+mobile

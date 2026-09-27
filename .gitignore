@@ -11,3 +11,7 @@ uploads/
 
 # OS
 .DS_Store
+
+# mobile / expo
+.expo/
+dist/

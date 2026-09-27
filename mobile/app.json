@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "PairFit",
+    "slug": "pairfit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#18181B"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.techfireco.pairfit",
+      "infoPlist": {
+        "NSCameraUsageDescription": "PairFit needs camera access to capture photos of your clothing items.",
+        "NSPhotoLibraryUsageDescription": "PairFit needs photo library access to upload clothing photos from your gallery."
+      }
+    },
+    "android": {
+      "package": "com.techfireco.pairfit",
+      "adaptiveIcon": {
+        "backgroundColor": "#18181B",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PairFit needs photo library access to upload clothing photos from your gallery.",
+          "cameraPermission": "PairFit needs camera access to capture photos of your clothing items."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://jtgohjakh6gsnaiabtdmlyyn.152.67.25.227.sslip.io"
+    }
+  }
+}

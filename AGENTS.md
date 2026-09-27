@@ -26,6 +26,9 @@ wardrobe with color-theory scores + reasons.
 4. Photo reads go through server-generated signed URLs (7-day TTL), bucket `wardrobe` (private).
 5. Required env vars: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
    `FREE_ITEM_LIMIT` (30), `PORT`. Server exits at boot if URL/service key are missing.
+6. **Production Database Safety**: Never execute destructive queries (`DELETE`, `DROP`, `TRUNCATE`,
+   or mass `UPDATE`) on production Supabase without explicit user confirmation. Read-only operations
+   (`SELECT`, schema inspection, health checks) may be executed autonomously.
 
 ## API (base = Express server)
 

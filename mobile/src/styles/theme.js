@@ -1,0 +1,53 @@
+// PairFit Mobile Design System & Tokens
+export const theme = {
+  colors: {
+    bg: '#F8F9FA',
+    card: '#FFFFFF',
+    cardBorder: '#E9ECEF',
+    text: '#111827',
+    textSecondary: '#6B7280',
+    textMuted: '#9CA3AF',
+    primary: '#18181B',
+    primaryHover: '#27272A',
+    accent: '#3B82F6',
+    success: '#10B981',
+    successBg: '#ECFDF5',
+    warning: '#F59E0B',
+    danger: '#EF4444',
+    dangerBg: '#FEF2F2',
+    dangerArm: '#DC2626',
+    border: '#E4E4E7',
+    chipBg: '#F4F4F5',
+  },
+  radius: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 24,
+    full: 9999,
+  },
+  shadows: {
+    sm: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    md: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.07,
+      shadowRadius: 8,
+      elevation: 3,
+    },
+    lg: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.12,
+      shadowRadius: 16,
+      elevation: 6,
+    },
+  },
+};
