@@ -140,14 +140,40 @@ function renderCloset() {
           <span class="chip">${esc(CATEGORY_LABELS[item.category] || item.category)}</span>
           <span class="swatch" style="background:${esc(item.colorHex)}" title="${esc(item.colorHex)}"></span>
         </div>
-        <button class="danger-link" onclick="deleteItem('${item.id}')">Remove</button>
+        <button class="danger-link" onclick="askDelete(this, '${item.id}')">Remove</button>
       </div>
     </div>`).join('');
 }
 
-async function deleteItem(id) {
-  if (!confirm('Remove this item from your closet?')) return;
-  await api('/api/items/' + id, { method: 'DELETE' });
+// Two-tap inline delete confirmation. Deliberately avoids native confirm():
+// it is auto-dismissed in some automation/webviews and blocks the UI thread.
+function askDelete(btn, id) {
+  if (btn.dataset.armed) { deleteItem(id, btn); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Tap again to confirm remove';
+  btn.classList.add('armed');
+  setTimeout(() => {
+    if (!btn.isConnected) return;
+    delete btn.dataset.armed;
+    btn.textContent = 'Remove';
+    btn.classList.remove('armed');
+  }, 4000);
+}
+
+async function deleteItem(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Removing...'; }
+  try {
+    await api('/api/items/' + id, { method: 'DELETE' });
+  } catch (e) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Remove';
+      btn.classList.remove('armed');
+      delete btn.dataset.armed;
+    }
+    alert(e.message || 'Could not remove item');
+    return;
+  }
   if (me) me.itemCount = Math.max(0, me.itemCount - 1);
   updatePlanBadge();
   await loadCloset();
