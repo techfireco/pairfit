@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "PairFit",
+    "slug": "pairfit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "pairfit",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.techfireco.pairfit",
+      "infoPlist": {
+        "NSCameraUsageDescription": "PairFit needs camera access so you can photograph your clothing items and digitize your wardrobe.",
+        "NSPhotoLibraryUsageDescription": "PairFit needs photo library access so you can select and upload photos of your clothes."
+      }
+    },
+    "android": {
+      "package": "com.techfireco.pairfit",
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF9F6",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FAF9F6"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PairFit needs access to your photos to upload wardrobe items.",
+          "cameraPermission": "PairFit needs access to your camera to snap photos of your clothes."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://jtgohjakh6gsnaiabtdmlyyn.152.67.25.227.sslip.io"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

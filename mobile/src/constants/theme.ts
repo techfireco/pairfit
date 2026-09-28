@@ -1,0 +1,45 @@
+export const COLORS = {
+  canvas: '#FAF9F6',
+  card: '#FFFFFF',
+  cardMuted: '#F4F4F0',
+  obsidian: '#111111',
+  obsidianLight: '#1E1E22',
+  charcoal: '#18181B',
+  textSecondary: '#6B7280',
+  textMuted: '#9CA3AF',
+  border: '#E4E4E7',
+  borderLight: '#F0F0EE',
+  accent: '#3A86FF',
+  danger: '#EF4444',
+  dangerLight: '#FEF2F2',
+  dangerBorder: '#FECACA',
+  scoreHigh: '#10B981',
+  scoreMedium: '#F59E0B',
+  scoreLow: '#6B7280',
+  overlay: 'rgba(0, 0, 0, 0.45)',
+  gold: '#D97706',
+};
+
+export const SHADOWS = {
+  soft: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  card: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 3,
+  },
+  button: {
+    shadowColor: '#111111',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+};
