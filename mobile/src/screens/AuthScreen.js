@@ -17,6 +17,7 @@ import { theme } from '../styles/theme';
 
 export default function AuthScreen({ onAuthSuccess }) {
   // authMethod: 'password' | 'otp'
+  // OTP disabled until SMTP is configured on self-hosted Supabase
   const [authMethod, setAuthMethod] = useState('password');
   // mode: 'login' | 'register' (for password method)
   const [mode, setMode] = useState('login');
@@ -110,6 +111,7 @@ export default function AuthScreen({ onAuthSuccess }) {
     }
   };
 
+  // OTP disabled until SMTP is configured on self-hosted Supabase
   const handleSendOtp = async () => {
     clearMessages();
     const cleanEmail = email.trim();
@@ -167,7 +169,7 @@ export default function AuthScreen({ onAuthSuccess }) {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Brand Header */}
+        {/* Brand Hero */}
         <View style={styles.brandHero}>
           <View style={styles.iconCircle}>
             <Ionicons name="shirt" size={32} color="#FFFFFF" />
@@ -177,71 +179,32 @@ export default function AuthScreen({ onAuthSuccess }) {
         </View>
 
         <Card elevation="md" style={styles.authCard}>
-          {/* Method Switcher: Password vs Email OTP */}
-          <View style={styles.methodSelector}>
+          {/* OTP disabled until SMTP is configured on self-hosted Supabase */}
+
+          {/* Mode Switcher for Password method (Sign In vs Create Account) */}
+          <View style={styles.tabBar}>
             <TouchableOpacity
-              style={[styles.methodTab, authMethod === 'password' && styles.methodTabActive]}
+              style={[styles.tab, mode === 'login' && styles.tabActive]}
               onPress={() => {
-                setAuthMethod('password');
+                setMode('login');
                 clearMessages();
               }}
               activeOpacity={0.8}
             >
-              <Ionicons
-                name="key-outline"
-                size={15}
-                color={authMethod === 'password' ? theme.colors.text : theme.colors.textMuted}
-              />
-              <Text style={[styles.methodText, authMethod === 'password' && styles.methodTextActive]}>
-                Password
-              </Text>
+              <Text style={[styles.tabText, mode === 'login' && styles.tabTextActive]}>Sign In</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.methodTab, authMethod === 'otp' && styles.methodTabActive]}
+              style={[styles.tab, mode === 'register' && styles.tabActive]}
               onPress={() => {
-                setAuthMethod('otp');
+                setMode('register');
                 clearMessages();
               }}
               activeOpacity={0.8}
             >
-              <Ionicons
-                name="mail-outline"
-                size={15}
-                color={authMethod === 'otp' ? theme.colors.text : theme.colors.textMuted}
-              />
-              <Text style={[styles.methodText, authMethod === 'otp' && styles.methodTextActive]}>
-                Email Code / OTP
-              </Text>
+              <Text style={[styles.tabText, mode === 'register' && styles.tabTextActive]}>Create Account</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Mode Switcher for Password method (Login vs Register) */}
-          {authMethod === 'password' && (
-            <View style={styles.tabBar}>
-              <TouchableOpacity
-                style={[styles.tab, mode === 'login' && styles.tabActive]}
-                onPress={() => {
-                  setMode('login');
-                  clearMessages();
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.tabText, mode === 'login' && styles.tabTextActive]}>Sign In</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.tab, mode === 'register' && styles.tabActive]}
-                onPress={() => {
-                  setMode('register');
-                  clearMessages();
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.tabText, mode === 'register' && styles.tabTextActive]}>Create Account</Text>
-              </TouchableOpacity>
-            </View>
-          )}
 
           {/* Inline Feedback Messages */}
           {infoMessage ? (
@@ -258,102 +221,42 @@ export default function AuthScreen({ onAuthSuccess }) {
             </View>
           ) : null}
 
-          {/* PASSWORD METHOD FIELDS */}
-          {authMethod === 'password' ? (
-            <>
-              {mode === 'register' && (
-                <Input
-                  label="Your Name"
-                  placeholder="e.g. Alex Smith"
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                />
-              )}
-
-              <Input
-                label="Email Address"
-                placeholder="alex@example.com"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-
-              <Input
-                label="Password"
-                placeholder="Min. 6 characters"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-
-              <Button
-                title={mode === 'login' ? 'Sign In' : 'Create Account'}
-                onPress={mode === 'login' ? handlePasswordLogin : handlePasswordRegister}
-                loading={loading}
-                size="lg"
-                style={styles.submitBtn}
-              />
-            </>
-          ) : (
-            /* EMAIL OTP METHOD FIELDS */
-            <>
-              {!otpSent ? (
-                <>
-                  <Input
-                    label="Email Address"
-                    placeholder="alex@example.com"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-
-                  <Button
-                    title="Send Verification Code"
-                    onPress={handleSendOtp}
-                    loading={loading}
-                    size="lg"
-                    style={styles.submitBtn}
-                  />
-                  <Text style={styles.otpHint}>
-                    We will send a 6-digit one-time code to your email. No password required.
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Input
-                    label="6-Digit Verification Code"
-                    placeholder="123456"
-                    value={otpCode}
-                    onChangeText={setOtpCode}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                  />
-
-                  <Button
-                    title="Verify & Enter"
-                    onPress={handleVerifyOtp}
-                    loading={loading}
-                    size="lg"
-                    style={styles.submitBtn}
-                  />
-
-                  <TouchableOpacity
-                    onPress={() => {
-                      setOtpSent(false);
-                      setOtpCode('');
-                      clearMessages();
-                    }}
-                    style={styles.resendBtn}
-                  >
-                    <Text style={styles.resendText}>Use a different email or re-send</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </>
+          {/* Password Login / Register Fields */}
+          {/* OTP disabled until SMTP is configured on self-hosted Supabase */}
+          {mode === 'register' && (
+            <Input
+              label="Your Name"
+              placeholder="e.g. Alex Smith"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+            />
           )}
+
+          <Input
+            label="Email Address"
+            placeholder="alex@example.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <Input
+            label="Password"
+            placeholder="Min. 6 characters"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          <Button
+            title={mode === 'login' ? 'Sign In' : 'Create Account'}
+            onPress={mode === 'login' ? handlePasswordLogin : handlePasswordRegister}
+            loading={loading}
+            size="lg"
+            style={styles.submitBtn}
+          />
 
           <Text style={styles.fineprint}>
             Your wardrobe items are safely stored in your private cloud account — surviving device switches.
