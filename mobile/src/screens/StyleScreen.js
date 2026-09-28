@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,150 +7,194 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
-  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import RecommendationCard from '../components/RecommendationCard';
+import Card from '../components/ui/Card';
+import ScoreBadge from '../components/ui/ScoreBadge';
+import ColorChip from '../components/ui/ColorChip';
+import Skeleton from '../components/ui/Skeleton';
+import EmptyState from '../components/ui/EmptyState';
 import { getRecommendations } from '../services/api';
 import { CATEGORY_LABELS } from '../config';
 import { theme } from '../styles/theme';
 
-export default function StyleScreen({ closet, onSwitchToCloset }) {
-  const [selectedItemId, setSelectedItemId] = useState(null);
-  const [loadingMatches, setLoadingMatches] = useState(false);
-  const [recommendations, setRecommendations] = useState(null);
-  const [styledItem, setStyledItem] = useState(null);
+export default function StyleScreen({ item, onBack, onOpenAddItem }) {
+  const [loading, setLoading] = useState(true);
+  const [recommendations, setRecommendations] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSelectItem = async (item) => {
-    setSelectedItemId(item.id);
-    setStyledItem(item);
-    setLoadingMatches(true);
-    setErrorMsg('');
+  useEffect(() => {
+    if (!item?.id) return;
+    let isMounted = true;
 
-    try {
-      const data = await getRecommendations(item.id);
-      setRecommendations(data.recommendations || []);
-    } catch (err) {
-      setErrorMsg(err.message || 'Could not calculate recommendations');
-      setRecommendations([]);
-    } finally {
-      setLoadingMatches(false);
+    async function fetchMatches() {
+      setLoading(true);
+      setErrorMsg('');
+      try {
+        const data = await getRecommendations(item.id);
+        if (isMounted) {
+          setRecommendations(data.recommendations || []);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setErrorMsg(err.message || 'Could not find outfit matches');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     }
-  };
 
-  if (!closet || closet.length === 0) {
+    fetchMatches();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [item?.id]);
+
+  if (!item) {
     return (
-      <View style={styles.emptyContainer}>
-        <View style={styles.emptyIconBg}>
-          <Ionicons name="sparkles-outline" size={38} color={theme.colors.accent} />
-        </View>
-        <Text style={styles.emptyTitle}>Your closet is empty</Text>
-        <Text style={styles.emptySubtitle}>
-          Add a few clothing items in different categories (tops, bottoms, jackets) to see color-theory pairing recommendations.
-        </Text>
-        <TouchableOpacity style={styles.ctaButton} onPress={onSwitchToCloset} activeOpacity={0.8}>
-          <Text style={styles.ctaButtonText}>Go to My Closet</Text>
-        </TouchableOpacity>
+      <View style={styles.container}>
+        <EmptyState
+          icon={<Ionicons name="shirt-outline" size={32} color={theme.colors.textMuted} />}
+          title="No Item Selected"
+          subtitle="Select any clothing piece from your wardrobe to see what goes with it."
+          actionTitle="Back to Wardrobe"
+          onAction={onBack}
+        />
       </View>
     );
   }
 
+  const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.heading}>Pick an item to style</Text>
-        <Text style={styles.subheading}>
-          Tap any garment from your closet to find what goes with it
-        </Text>
+      {/* Top Navigation Bar */}
+      <View style={styles.navRow}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
+          <Text style={styles.backText}>Wardrobe</Text>
+        </TouchableOpacity>
+        <Text style={styles.screenHeaderTitle}>Outfit Harmony</Text>
+        <View style={{ width: 70 }} />
       </View>
 
-      {/* Horizontal Item Picker */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.pickerRow}
-      >
-        {closet.map((item) => {
-          const isSelected = selectedItemId === item.id;
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.pickerCard, isSelected && styles.pickerCardSelected]}
-              onPress={() => handleSelectItem(item)}
-              activeOpacity={0.8}
-            >
-              <Image source={{ uri: item.photoUrl }} style={styles.pickerImage} resizeMode="cover" />
-              <View style={styles.pickerBody}>
-                <Text style={styles.pickerName} numberOfLines={1}>
-                  {item.name || 'Untitled'}
-                </Text>
-                <View style={styles.pickerMeta}>
-                  <View style={[styles.swatchDot, { backgroundColor: item.colorHex || '#ccc' }]} />
-                  <Text style={styles.pickerCategory}>
-                    {CATEGORY_LABELS[item.category] || item.category}
-                  </Text>
-                </View>
-              </View>
-              {isSelected && (
-                <View style={styles.selectedCheck}>
-                  <Ionicons name="checkmark-circle" size={18} color={theme.colors.primary} />
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* Matches Section */}
-      <View style={styles.resultsArea}>
-        {!selectedItemId && (
-          <View style={styles.placeholderBox}>
-            <Ionicons name="hand-left-outline" size={28} color={theme.colors.textMuted} />
-            <Text style={styles.placeholderText}>Tap an item above to calculate color harmony matches.</Text>
+      {/* SELECTED ITEM SHOWN LARGE ON TOP */}
+      <Card style={styles.heroCard} elevation="md">
+        <View style={styles.heroImageContainer}>
+          <Image source={{ uri: item.photoUrl }} style={styles.heroImage} resizeMode="cover" />
+          <View style={styles.heroBadge}>
+            <Text style={styles.heroBadgeText}>{categoryLabel}</Text>
           </View>
-        )}
+        </View>
 
-        {loadingMatches && (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Running color-theory engine & rules…</Text>
+        <View style={styles.heroDetails}>
+          <View style={styles.heroMetaRow}>
+            <Text style={styles.heroTitle} numberOfLines={2}>
+              {item.name || 'Untitled Garment'}
+            </Text>
+            <ColorChip hex={item.colorHex} size="md" />
           </View>
-        )}
+          <Text style={styles.heroSub}>
+            Matching clothes from your personal wardrobe:
+          </Text>
+        </View>
+      </Card>
 
-        {errorMsg ? (
+      {/* MATCHES SECTION */}
+      <View style={styles.matchesSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Ranked Matches</Text>
+          {!loading && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>
+                {recommendations.length} {recommendations.length === 1 ? 'match' : 'matches'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {loading ? (
+          <View style={styles.skeletonList}>
+            {[1, 2, 3].map((k) => (
+              <Card key={k} style={styles.skeletonMatchCard}>
+                <Skeleton width={80} height={80} borderRadius={theme.radius.md} />
+                <View style={{ flex: 1, gap: 6, marginLeft: 12 }}>
+                  <Skeleton width="60%" height={16} />
+                  <Skeleton width="40%" height={12} />
+                  <Skeleton width="90%" height={12} />
+                </View>
+              </Card>
+            ))}
+          </View>
+        ) : errorMsg ? (
           <View style={styles.errorBox}>
             <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
             <Text style={styles.errorText}>{errorMsg}</Text>
           </View>
-        ) : null}
-
-        {!loadingMatches && recommendations !== null && (
-          <View style={styles.matchesContainer}>
-            <View style={styles.matchesHeader}>
-              <Text style={styles.matchesHeading}>
-                Best Matches for{' '}
-                <Text style={styles.styledItemHighlight}>{styledItem?.name || 'Item'}</Text>
-              </Text>
-              <Text style={styles.matchesCountBadge}>
-                {recommendations.length} {recommendations.length === 1 ? 'match' : 'matches'}
-              </Text>
-            </View>
-
-            {recommendations.length === 0 ? (
-              <View style={styles.noMatchesCard}>
-                <Ionicons name="color-palette-outline" size={32} color={theme.colors.textMuted} />
-                <Text style={styles.noMatchesTitle}>No matching items yet</Text>
-                <Text style={styles.noMatchesText}>
-                  Add more clothes in a pairing category (for example, add tops or jackets if you picked pants). Same-category items do not pair.
-                </Text>
-              </View>
-            ) : (
-              recommendations.map((rec) => (
-                <RecommendationCard key={rec.item.id} recommendation={rec} />
-              ))
+        ) : recommendations.length === 0 ? (
+          <Card style={styles.emptyMatchesCard} elevation="sm">
+            <Ionicons name="color-palette-outline" size={36} color={theme.colors.textMuted} />
+            <Text style={styles.noMatchesTitle}>No matching items yet</Text>
+            <Text style={styles.noMatchesText}>
+              Same-group garments don't pair. Add clothes in complementary categories (e.g. tops and jackets for jeans).
+            </Text>
+            {onOpenAddItem && (
+              <TouchableOpacity
+                style={styles.addMoreBtn}
+                onPress={onOpenAddItem}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.addMoreText}>+ Add Pairing Item</Text>
+              </TouchableOpacity>
             )}
-          </View>
+          </Card>
+        ) : (
+          recommendations.map((rec) => {
+            const matchItem = rec.item;
+            const matchCategory = CATEGORY_LABELS[matchItem.category] || matchItem.category;
+            const primaryReason = rec.reasons?.[0] || 'Complementary color pairing';
+
+            return (
+              <Card key={matchItem.id} style={styles.matchCard} elevation="sm">
+                <Image
+                  source={{ uri: matchItem.photoUrl }}
+                  style={styles.matchImage}
+                  resizeMode="cover"
+                />
+
+                <View style={styles.matchBody}>
+                  <View style={styles.matchTopRow}>
+                    <View style={styles.matchTitleContainer}>
+                      <Text style={styles.matchName} numberOfLines={1}>
+                        {matchItem.name || 'Garment'}
+                      </Text>
+                      <View style={styles.matchCategoryPill}>
+                        <Text style={styles.matchCategoryText}>{matchCategory}</Text>
+                      </View>
+                    </View>
+
+                    <ScoreBadge score={rec.score} />
+                  </View>
+
+                  <View style={styles.reasonRow}>
+                    <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                    <Text style={styles.reasonText} numberOfLines={2}>
+                      {primaryReason}
+                    </Text>
+                  </View>
+
+                  {rec.reasons?.length > 1 && (
+                    <Text style={styles.extraReasonText} numberOfLines={1}>
+                      + {rec.reasons[1]}
+                    </Text>
+                  )}
+                </View>
+              </Card>
+            );
+          })
         )}
       </View>
     </ScrollView>
@@ -163,209 +207,221 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg,
   },
   content: {
-    padding: 16,
-    paddingBottom: 40,
+    padding: theme.spacing[4],
+    paddingBottom: theme.spacing[12],
   },
-  sectionHeader: {
-    marginBottom: 12,
-  },
-  heading: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: theme.colors.text,
-    letterSpacing: -0.3,
-  },
-  subheading: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginTop: 2,
-  },
-  pickerRow: {
-    gap: 10,
-    paddingVertical: 4,
-    marginBottom: 20,
-  },
-  pickerCard: {
-    width: 120,
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.md,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    ...theme.shadows.sm,
-    position: 'relative',
-  },
-  pickerCardSelected: {
-    borderColor: theme.colors.primary,
-  },
-  pickerImage: {
-    width: '100%',
-    height: 110,
-    backgroundColor: '#EEEEEE',
-  },
-  pickerBody: {
-    padding: 8,
-  },
-  pickerName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  pickerMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  swatchDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: '#D4D4D8',
-  },
-  pickerCategory: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: theme.colors.textMuted,
-  },
-  selectedCheck: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 9,
-  },
-  resultsArea: {
-    marginTop: 6,
-  },
-  placeholderBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    borderStyle: 'dashed',
-    gap: 10,
-  },
-  placeholderText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-  },
-  loadingBox: {
-    padding: 36,
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.textSecondary,
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.dangerBg,
-    padding: 12,
-    borderRadius: theme.radius.md,
-    gap: 8,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#991B1B',
-    fontWeight: '500',
-    flex: 1,
-  },
-  matchesContainer: {
-    gap: 10,
-  },
-  matchesHeader: {
+  navRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: theme.spacing[4],
   },
-  matchesHeading: {
-    fontSize: 16,
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.card,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+  },
+  backText: {
+    fontSize: theme.typography.sm.fontSize,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  screenHeaderTitle: {
+    fontSize: theme.typography.base.fontSize,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  heroCard: {
+    marginBottom: theme.spacing[5],
+  },
+  heroImageContainer: {
+    width: '100%',
+    height: 250,
+    backgroundColor: '#ECECEC',
+    position: 'relative',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(24, 24, 27, 0.85)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: theme.radius.sm,
+  },
+  heroBadgeText: {
+    color: '#FFFFFF',
+    fontSize: theme.typography.xs.fontSize,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroDetails: {
+    padding: theme.spacing[4],
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  heroTitle: {
+    fontSize: theme.typography.lg.fontSize,
     fontWeight: '800',
     color: theme.colors.text,
     flex: 1,
+    marginRight: 8,
   },
-  styledItemHighlight: {
-    color: theme.colors.accent,
-  },
-  matchesCountBadge: {
-    fontSize: 12,
-    fontWeight: '700',
+  heroSub: {
+    fontSize: theme.typography.xs.fontSize,
     color: theme.colors.textSecondary,
-    backgroundColor: theme.colors.chipBg,
+    fontWeight: '500',
+  },
+  matchesSection: {
+    gap: theme.spacing[3],
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    fontSize: theme.typography.md.fontSize,
+    fontWeight: '800',
+    color: theme.colors.text,
+    letterSpacing: -0.2,
+  },
+  countBadge: {
+    backgroundColor: theme.colors.surfaceSubtle,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: theme.radius.full,
   },
-  noMatchesCard: {
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.lg,
+  countText: {
+    fontSize: theme.typography.xs.fontSize,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  skeletonList: {
+    gap: 12,
+  },
+  skeletonMatchCard: {
+    flexDirection: 'row',
+    padding: 12,
+    alignItems: 'center',
+  },
+  matchCard: {
+    flexDirection: 'row',
+    padding: 12,
+    alignItems: 'center',
+  },
+  matchImage: {
+    width: 80,
+    height: 80,
+    borderRadius: theme.radius.md,
+    backgroundColor: '#EEEEEE',
+  },
+  matchBody: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  matchTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  matchTitleContainer: {
+    flex: 1,
+    marginRight: 8,
+  },
+  matchName: {
+    fontSize: theme.typography.sm.fontSize + 1,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
+  matchCategoryPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.chipBg,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: theme.radius.xs,
+  },
+  matchCategoryText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  reasonText: {
+    fontSize: theme.typography.xs.fontSize,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  extraReasonText: {
+    fontSize: theme.typography.xs.fontSize - 1,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.dangerBg,
+    padding: 12,
+    borderRadius: theme.radius.md,
+  },
+  errorText: {
+    fontSize: theme.typography.xs.fontSize,
+    color: '#991B1B',
+    fontWeight: '600',
+    flex: 1,
+  },
+  emptyMatchesCard: {
     padding: 24,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
     gap: 8,
   },
   noMatchesTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: theme.typography.base.fontSize,
+    fontWeight: '800',
     color: theme.colors.text,
   },
   noMatchesText: {
-    fontSize: 13,
+    fontSize: theme.typography.xs.fontSize,
     color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
     maxWidth: 280,
   },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  emptyIconBg: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: theme.colors.text,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  ctaButton: {
+  addMoreBtn: {
+    marginTop: 8,
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: theme.radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: theme.radius.sm,
   },
-  ctaButtonText: {
+  addMoreText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: theme.typography.xs.fontSize,
     fontWeight: '700',
   },
 });

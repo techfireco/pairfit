@@ -2,23 +2,33 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getSupabase } from '../services/api';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
+import Card from '../components/ui/Card';
+import { getSupabase, sendEmailOtp, verifyEmailOtp } from '../services/api';
 import { theme } from '../styles/theme';
 
 export default function AuthScreen({ onAuthSuccess }) {
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  // authMethod: 'password' | 'otp'
+  const [authMethod, setAuthMethod] = useState('password');
+  // mode: 'login' | 'register' (for password method)
+  const [mode, setMode] = useState('login');
+  
+  // Fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+
+  // Status
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
@@ -28,7 +38,7 @@ export default function AuthScreen({ onAuthSuccess }) {
     setInfoMessage('');
   };
 
-  const handleRegister = async () => {
+  const handlePasswordRegister = async () => {
     clearMessages();
     const cleanEmail = email.trim();
     if (!cleanEmail || !password) {
@@ -56,7 +66,6 @@ export default function AuthScreen({ onAuthSuccess }) {
         return;
       }
 
-      // Email confirmation is active on production
       if (!data?.session) {
         setInfoMessage('Account created! Check your email to confirm, then log in.');
         setMode('login');
@@ -70,7 +79,7 @@ export default function AuthScreen({ onAuthSuccess }) {
     }
   };
 
-  const handleLogin = async () => {
+  const handlePasswordLogin = async () => {
     clearMessages();
     const cleanEmail = email.trim();
     if (!cleanEmail || !password) {
@@ -101,12 +110,64 @@ export default function AuthScreen({ onAuthSuccess }) {
     }
   };
 
+  const handleSendOtp = async () => {
+    clearMessages();
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setErrorMessage('Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await sendEmailOtp(cleanEmail);
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+      setOtpSent(true);
+      setInfoMessage(`We sent a 6-digit verification code to ${cleanEmail}`);
+    } catch (err) {
+      setErrorMessage(err.message || 'Failed to send verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    clearMessages();
+    const cleanEmail = email.trim();
+    const cleanOtp = otpCode.trim();
+    if (!cleanOtp) {
+      setErrorMessage('Please enter the 6-digit code');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await verifyEmailOtp(cleanEmail, cleanOtp);
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+
+      if (data?.session) {
+        onAuthSuccess();
+      }
+    } catch (err) {
+      setErrorMessage(err.message || 'Verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* Brand Header */}
         <View style={styles.brandHero}>
           <View style={styles.iconCircle}>
             <Ionicons name="shirt" size={32} color="#FFFFFF" />
@@ -115,36 +176,77 @@ export default function AuthScreen({ onAuthSuccess }) {
           <Text style={styles.brandTagline}>Upload your clothes. We tell you what goes with what.</Text>
         </View>
 
-        <View style={styles.authCard}>
-          {/* Tabs */}
-          <View style={styles.tabBar}>
+        <Card elevation="md" style={styles.authCard}>
+          {/* Method Switcher: Password vs Email OTP */}
+          <View style={styles.methodSelector}>
             <TouchableOpacity
-              style={[styles.tab, mode === 'login' && styles.tabActive]}
+              style={[styles.methodTab, authMethod === 'password' && styles.methodTabActive]}
               onPress={() => {
-                setMode('login');
+                setAuthMethod('password');
                 clearMessages();
               }}
               activeOpacity={0.8}
             >
-              <Text style={[styles.tabText, mode === 'login' && styles.tabTextActive]}>Login</Text>
+              <Ionicons
+                name="key-outline"
+                size={15}
+                color={authMethod === 'password' ? theme.colors.text : theme.colors.textMuted}
+              />
+              <Text style={[styles.methodText, authMethod === 'password' && styles.methodTextActive]}>
+                Password
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.tab, mode === 'register' && styles.tabActive]}
+              style={[styles.methodTab, authMethod === 'otp' && styles.methodTabActive]}
               onPress={() => {
-                setMode('register');
+                setAuthMethod('otp');
                 clearMessages();
               }}
               activeOpacity={0.8}
             >
-              <Text style={[styles.tabText, mode === 'register' && styles.tabTextActive]}>Register</Text>
+              <Ionicons
+                name="mail-outline"
+                size={15}
+                color={authMethod === 'otp' ? theme.colors.text : theme.colors.textMuted}
+              />
+              <Text style={[styles.methodText, authMethod === 'otp' && styles.methodTextActive]}>
+                Email Code / OTP
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Messages */}
+          {/* Mode Switcher for Password method (Login vs Register) */}
+          {authMethod === 'password' && (
+            <View style={styles.tabBar}>
+              <TouchableOpacity
+                style={[styles.tab, mode === 'login' && styles.tabActive]}
+                onPress={() => {
+                  setMode('login');
+                  clearMessages();
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabText, mode === 'login' && styles.tabTextActive]}>Sign In</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tab, mode === 'register' && styles.tabActive]}
+                onPress={() => {
+                  setMode('register');
+                  clearMessages();
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabText, mode === 'register' && styles.tabTextActive]}>Create Account</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Inline Feedback Messages */}
           {infoMessage ? (
             <View style={styles.infoBox}>
-              <Ionicons name="mail-unread-outline" size={18} color="#059669" />
+              <Ionicons name="information-circle-outline" size={18} color="#059669" />
               <Text style={styles.infoText}>{infoMessage}</Text>
             </View>
           ) : null}
@@ -156,67 +258,107 @@ export default function AuthScreen({ onAuthSuccess }) {
             </View>
           ) : null}
 
-          {/* Form Fields */}
-          {mode === 'register' && (
-            <View style={styles.fieldGroup}>
-              <Text style={styles.inputLabel}>Your Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Alex Smith"
-                placeholderTextColor={theme.colors.textMuted}
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
+          {/* PASSWORD METHOD FIELDS */}
+          {authMethod === 'password' ? (
+            <>
+              {mode === 'register' && (
+                <Input
+                  label="Your Name"
+                  placeholder="e.g. Alex Smith"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                />
+              )}
+
+              <Input
+                label="Email Address"
+                placeholder="alex@example.com"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
               />
-            </View>
+
+              <Input
+                label="Password"
+                placeholder="Min. 6 characters"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+
+              <Button
+                title={mode === 'login' ? 'Sign In' : 'Create Account'}
+                onPress={mode === 'login' ? handlePasswordLogin : handlePasswordRegister}
+                loading={loading}
+                size="lg"
+                style={styles.submitBtn}
+              />
+            </>
+          ) : (
+            /* EMAIL OTP METHOD FIELDS */
+            <>
+              {!otpSent ? (
+                <>
+                  <Input
+                    label="Email Address"
+                    placeholder="alex@example.com"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+
+                  <Button
+                    title="Send Verification Code"
+                    onPress={handleSendOtp}
+                    loading={loading}
+                    size="lg"
+                    style={styles.submitBtn}
+                  />
+                  <Text style={styles.otpHint}>
+                    We will send a 6-digit one-time code to your email. No password required.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Input
+                    label="6-Digit Verification Code"
+                    placeholder="123456"
+                    value={otpCode}
+                    onChangeText={setOtpCode}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                  />
+
+                  <Button
+                    title="Verify & Enter"
+                    onPress={handleVerifyOtp}
+                    loading={loading}
+                    size="lg"
+                    style={styles.submitBtn}
+                  />
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setOtpSent(false);
+                      setOtpCode('');
+                      clearMessages();
+                    }}
+                    style={styles.resendBtn}
+                  >
+                    <Text style={styles.resendText}>Use a different email or re-send</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </>
           )}
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.inputLabel}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="alex@example.com"
-              placeholderTextColor={theme.colors.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.inputLabel}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor={theme.colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={mode === 'login' ? handleLogin : handleRegister}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryButtonText}>
-                {mode === 'login' ? 'Sign In' : 'Create Account'}
-              </Text>
-            )}
-          </TouchableOpacity>
-
           <Text style={styles.fineprint}>
-            Your wardrobe is saved in your private cloud account — it survives device switches and app reinstalls.
+            Your wardrobe items are safely stored in your private cloud account — surviving device switches.
           </Text>
-        </View>
+        </Card>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -230,54 +372,77 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
-    paddingVertical: 40,
+    padding: theme.spacing[5],
+    paddingVertical: theme.spacing[8],
   },
   brandHero: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: theme.spacing[6],
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: theme.spacing[3],
     ...theme.shadows.md,
   },
   brandTitle: {
-    fontSize: 28,
+    fontSize: theme.typography['2xl'].fontSize,
     fontWeight: '900',
     color: theme.colors.text,
     letterSpacing: -0.5,
   },
   brandTagline: {
-    fontSize: 14,
+    fontSize: theme.typography.sm.fontSize,
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: theme.spacing[1],
     maxWidth: 280,
   },
   authCard: {
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.xl,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: theme.colors.cardBorder,
-    ...theme.shadows.md,
+    padding: theme.spacing[6],
+  },
+  methodSelector: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    marginBottom: theme.spacing[4],
+  },
+  methodTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: theme.spacing[3],
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  methodTabActive: {
+    borderBottomColor: theme.colors.primary,
+  },
+  methodText: {
+    fontSize: theme.typography.sm.fontSize,
+    fontWeight: '600',
+    color: theme.colors.textMuted,
+  },
+  methodTextActive: {
+    color: theme.colors.text,
+    fontWeight: '700',
   },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: theme.colors.chipBg,
     borderRadius: theme.radius.md,
-    padding: 4,
-    marginBottom: 20,
+    padding: 3,
+    marginBottom: theme.spacing[4],
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: theme.spacing[2],
     alignItems: 'center',
     borderRadius: theme.radius.sm,
   },
@@ -286,7 +451,7 @@ const styles = StyleSheet.create({
     ...theme.shadows.sm,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: theme.typography.sm.fontSize,
     fontWeight: '600',
     color: theme.colors.textSecondary,
   },
@@ -297,16 +462,16 @@ const styles = StyleSheet.create({
   infoBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ECFDF5',
+    backgroundColor: theme.colors.successBg,
     borderWidth: 1,
     borderColor: '#A7F3D0',
-    padding: 12,
+    padding: theme.spacing[3],
     borderRadius: theme.radius.md,
-    marginBottom: 16,
+    marginBottom: theme.spacing[4],
     gap: 8,
   },
   infoText: {
-    fontSize: 13,
+    fontSize: theme.typography.sm.fontSize,
     color: '#065F46',
     flex: 1,
     fontWeight: '500',
@@ -317,56 +482,41 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.dangerBg,
     borderWidth: 1,
     borderColor: '#FECACA',
-    padding: 12,
+    padding: theme.spacing[3],
     borderRadius: theme.radius.md,
-    marginBottom: 16,
+    marginBottom: theme.spacing[4],
     gap: 8,
   },
   errorText: {
-    fontSize: 13,
+    fontSize: theme.typography.sm.fontSize,
     color: '#991B1B',
     flex: 1,
     fontWeight: '500',
   },
-  fieldGroup: {
-    marginBottom: 14,
+  submitBtn: {
+    marginTop: theme.spacing[2],
+    marginBottom: theme.spacing[4],
   },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '700',
+  otpHint: {
+    fontSize: theme.typography.xs.fontSize,
     color: theme.colors.textSecondary,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    textAlign: 'center',
+    marginBottom: theme.spacing[3],
   },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: 14,
-    fontSize: 15,
-    color: theme.colors.text,
-    backgroundColor: '#FAFAFA',
-  },
-  primaryButton: {
-    height: 50,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.radius.md,
+  resendBtn: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    marginBottom: 16,
+    paddingVertical: theme.spacing[2],
   },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+  resendText: {
+    fontSize: theme.typography.sm.fontSize,
+    fontWeight: '600',
+    color: theme.colors.accent,
   },
   fineprint: {
-    fontSize: 12,
+    fontSize: theme.typography.xs.fontSize,
     color: theme.colors.textMuted,
     textAlign: 'center',
     lineHeight: 18,
+    marginTop: theme.spacing[1],
   },
 });

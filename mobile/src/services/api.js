@@ -3,6 +3,7 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { getApiBaseUrl } from '../config';
+import { saveAuthToken, clearAuthToken } from './storage';
 
 let supabaseClient = null;
 let initPromise = null;
@@ -37,6 +38,15 @@ export async function initSupabase() {
         },
       });
 
+      // Synchronize access token with SecureStore
+      supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.access_token) {
+          await saveAuthToken(session.access_token);
+        } else {
+          await clearAuthToken();
+        }
+      });
+
       return supabaseClient;
     } catch (err) {
       initPromise = null;
@@ -52,6 +62,26 @@ export async function getSupabase() {
     return await initSupabase();
   }
   return supabaseClient;
+}
+
+// Auth Helpers
+export async function sendEmailOtp(email) {
+  const sb = await getSupabase();
+  return await sb.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: true,
+    },
+  });
+}
+
+export async function verifyEmailOtp(email, token) {
+  const sb = await getSupabase();
+  return await sb.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
 }
 
 export async function apiRequest(path, options = {}) {

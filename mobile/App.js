@@ -7,13 +7,18 @@ import {
   StyleSheet,
   ActivityIndicator,
   StatusBar,
+  BackHandler,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Header from './src/components/Header';
-import UpgradeModal from './src/components/UpgradeModal';
+import PaywallSheet from './src/components/PaywallSheet';
 import AuthScreen from './src/screens/AuthScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import ClosetScreen from './src/screens/ClosetScreen';
+import AddItemScreen from './src/screens/AddItemScreen';
 import StyleScreen from './src/screens/StyleScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
 import {
   initSupabase,
   getSupabase,
@@ -21,34 +26,54 @@ import {
   getItems,
   setOnSessionExpired,
 } from './src/services/api';
+import {
+  getAuthToken,
+  hasCompletedOnboarding,
+  setCompletedOnboarding,
+} from './src/services/storage';
 import { theme } from './src/styles/theme';
 
 export default function App() {
   const [initLoading, setInitLoading] = useState(true);
   const [initError, setInitError] = useState('');
   const [session, setSession] = useState(null);
-  const [currentTab, setCurrentTab] = useState('closet'); // 'closet' | 'style'
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(true);
+
+  // Main navigation state: 'wardrobe' | 'add' | 'profile'
+  const [currentTab, setCurrentTab] = useState('wardrobe');
+  // 'style' mode item when user taps any garment in wardrobe
+  const [selectedStyleItem, setSelectedStyleItem] = useState(null);
+
+  // Wardrobe & user data
   const [closet, setCloset] = useState([]);
   const [profile, setProfile] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [upgradeModalVisible, setUpgradeModalVisible] = useState(false);
+  const [closetLoading, setClosetLoading] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
 
   const authSubscriptionRef = useRef(null);
 
-  // Reusable bootstrap: initializes Supabase, checks session, and registers auth state listener
+  // Bootstrap app: check onboarding status, initialize Supabase, check session
   const bootstrap = useCallback(async () => {
     setInitError('');
     setInitLoading(true);
     try {
+      // 1. Check onboarding status flag
+      const onboarded = await hasCompletedOnboarding();
+      setHasSeenOnboarding(onboarded);
+
+      // 2. Initialize Supabase client
       const sb = await initSupabase();
 
       setOnSessionExpired(() => {
         setSession(null);
         setCloset([]);
         setProfile(null);
+        setSelectedStyleItem(null);
+        setCurrentTab('wardrobe');
       });
 
-      // Check active session
+      // 3. Check for active session
       const { data: { session: existingSession } } = await sb.auth.getSession();
       setSession(existingSession);
 
@@ -57,12 +82,14 @@ export default function App() {
         authSubscriptionRef.current.unsubscribe();
       }
 
-      // Listen for auth state changes
+      // 4. Register auth state listener
       const { data: listener } = sb.auth.onAuthStateChange((_event, currentSession) => {
         setSession(currentSession);
         if (!currentSession) {
           setCloset([]);
           setProfile(null);
+          setSelectedStyleItem(null);
+          setCurrentTab('wardrobe');
         }
       });
       authSubscriptionRef.current = listener?.subscription;
@@ -84,10 +111,11 @@ export default function App() {
     };
   }, [bootstrap]);
 
-  // Fetch wardrobe data when logged in
+  // Load wardrobe & user profile
   const loadWardrobeData = useCallback(async () => {
     if (!session) return;
     try {
+      setClosetLoading(true);
       const [itemsData, profileData] = await Promise.all([
         getItems().catch(() => []),
         getMe().catch(() => null),
@@ -96,6 +124,8 @@ export default function App() {
       setProfile(profileData);
     } catch (err) {
       console.warn('Failed to load wardrobe data:', err);
+    } finally {
+      setClosetLoading(false);
     }
   }, [session]);
 
@@ -104,6 +134,28 @@ export default function App() {
       loadWardrobeData();
     }
   }, [session, loadWardrobeData]);
+
+  // Handle Android hardware back button
+  useEffect(() => {
+    const handleBackPress = () => {
+      if (paywallVisible) {
+        setPaywallVisible(false);
+        return true;
+      }
+      if (selectedStyleItem) {
+        setSelectedStyleItem(null);
+        return true;
+      }
+      if (currentTab !== 'wardrobe') {
+        setCurrentTab('wardrobe');
+        return true;
+      }
+      return false; // Exit app
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    return () => backHandler.remove();
+  }, [paywallVisible, selectedStyleItem, currentTab]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -121,6 +173,8 @@ export default function App() {
     setSession(null);
     setCloset([]);
     setProfile(null);
+    setSelectedStyleItem(null);
+    setCurrentTab('wardrobe');
   };
 
   const handleItemAdded = (newItem) => {
@@ -131,10 +185,14 @@ export default function App() {
         itemCount: (prev.itemCount || 0) + 1,
       }));
     }
+    setCurrentTab('wardrobe');
   };
 
   const handleItemDeleted = (id) => {
     setCloset((prev) => prev.filter((item) => item.id !== id));
+    if (selectedStyleItem?.id === id) {
+      setSelectedStyleItem(null);
+    }
     if (profile) {
       setProfile((prev) => ({
         ...prev,
@@ -143,7 +201,12 @@ export default function App() {
     }
   };
 
-  // Splash Loading
+  const handleOnboardingFinish = async () => {
+    await setCompletedOnboarding(true);
+    setHasSeenOnboarding(true);
+  };
+
+  // 1. Splash Loading State
   if (initLoading) {
     return (
       <SafeAreaView style={styles.centerContainer}>
@@ -158,7 +221,7 @@ export default function App() {
     );
   }
 
-  // Connection Error
+  // 2. Connection Error State
   if (initError) {
     return (
       <SafeAreaView style={styles.centerContainer}>
@@ -166,17 +229,24 @@ export default function App() {
         <Ionicons name="cloud-offline-outline" size={48} color={theme.colors.danger} />
         <Text style={styles.errorTitle}>Connection Failed</Text>
         <Text style={styles.errorDescription}>{initError}</Text>
-        <TouchableOpacity
-          style={styles.retryButton}
-          onPress={bootstrap}
-        >
+        <TouchableOpacity style={styles.retryButton} onPress={bootstrap} activeOpacity={0.8}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  // Auth Screen if unauthenticated
+  // 3. First-Launch Onboarding (if not completed and not logged in)
+  if (!session && !hasSeenOnboarding) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" />
+        <OnboardingScreen onFinish={handleOnboardingFinish} />
+      </SafeAreaView>
+    );
+  }
+
+  // 4. Auth Screen if unauthenticated
   if (!session) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -186,78 +256,146 @@ export default function App() {
     );
   }
 
-  // Authenticated App Shell
+  // 5. Authenticated App Shell with 3-tab navigation
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
-      <Header user={session.user} onLogout={handleLogout} />
 
+      {/* Show header on Wardrobe tab when not in Style mode */}
+      {currentTab === 'wardrobe' && !selectedStyleItem && (
+        <Header user={session.user} onLogout={handleLogout} />
+      )}
+
+      {/* Main Content Area */}
       <View style={styles.mainContent}>
-        {currentTab === 'closet' ? (
+        {selectedStyleItem ? (
+          <StyleScreen
+            item={selectedStyleItem}
+            onBack={() => setSelectedStyleItem(null)}
+            onOpenAddItem={() => {
+              setSelectedStyleItem(null);
+              setCurrentTab('add');
+            }}
+          />
+        ) : currentTab === 'wardrobe' ? (
           <ClosetScreen
             closet={closet}
             profile={profile}
-            onRefresh={handleRefresh}
+            loading={closetLoading}
             refreshing={refreshing}
-            onItemAdded={handleItemAdded}
+            onRefresh={handleRefresh}
             onItemDeleted={handleItemDeleted}
-            onShowUpgradeModal={() => setUpgradeModalVisible(true)}
+            onOpenAddItem={() => setCurrentTab('add')}
+            onStyleItem={(item) => setSelectedStyleItem(item)}
+          />
+        ) : currentTab === 'add' ? (
+          <AddItemScreen
+            onItemAdded={handleItemAdded}
+            onCancel={() => setCurrentTab('wardrobe')}
+            onShowPaywall={() => setPaywallVisible(true)}
           />
         ) : (
-          <StyleScreen
+          <ProfileScreen
+            user={session.user}
+            profile={profile}
             closet={closet}
-            onSwitchToCloset={() => setCurrentTab('closet')}
+            onLogout={handleLogout}
           />
         )}
       </View>
 
-      {/* Bottom Tab Bar */}
+      {/* Exactly 3 Tabs: Wardrobe | Add (center) | Profile */}
       <View style={styles.tabBar}>
+        {/* Tab 1: Wardrobe */}
         <TouchableOpacity
           style={styles.tabButton}
-          onPress={() => setCurrentTab('closet')}
-          activeOpacity={0.8}
+          onPress={() => {
+            setSelectedStyleItem(null);
+            setCurrentTab('wardrobe');
+          }}
+          activeOpacity={0.7}
         >
           <Ionicons
-            name={currentTab === 'closet' ? 'shirt' : 'shirt-outline'}
+            name={
+              currentTab === 'wardrobe' && !selectedStyleItem
+                ? 'shirt'
+                : 'shirt-outline'
+            }
             size={22}
-            color={currentTab === 'closet' ? theme.colors.primary : theme.colors.textMuted}
+            color={
+              currentTab === 'wardrobe' && !selectedStyleItem
+                ? theme.colors.primary
+                : theme.colors.textMuted
+            }
           />
           <Text
             style={[
               styles.tabLabel,
-              currentTab === 'closet' && styles.tabLabelActive,
+              currentTab === 'wardrobe' && !selectedStyleItem && styles.tabLabelActive,
             ]}
           >
-            My Closet
+            Wardrobe
           </Text>
         </TouchableOpacity>
 
+        {/* Tab 2: Add (Center Action) */}
+        <TouchableOpacity
+          style={styles.centerAddButton}
+          onPress={() => {
+            setSelectedStyleItem(null);
+            setCurrentTab('add');
+          }}
+          activeOpacity={0.85}
+        >
+          <View
+            style={[
+              styles.addIconCircle,
+              currentTab === 'add' && styles.addIconCircleActive,
+            ]}
+          >
+            <Ionicons name="add" size={26} color="#FFFFFF" />
+          </View>
+          <Text
+            style={[
+              styles.tabLabel,
+              currentTab === 'add' && styles.tabLabelActive,
+            ]}
+          >
+            Add Item
+          </Text>
+        </TouchableOpacity>
+
+        {/* Tab 3: Profile */}
         <TouchableOpacity
           style={styles.tabButton}
-          onPress={() => setCurrentTab('style')}
-          activeOpacity={0.8}
+          onPress={() => {
+            setSelectedStyleItem(null);
+            setCurrentTab('profile');
+          }}
+          activeOpacity={0.7}
         >
           <Ionicons
-            name={currentTab === 'style' ? 'sparkles' : 'sparkles-outline'}
+            name={currentTab === 'profile' ? 'person' : 'person-outline'}
             size={22}
-            color={currentTab === 'style' ? theme.colors.primary : theme.colors.textMuted}
+            color={
+              currentTab === 'profile' ? theme.colors.primary : theme.colors.textMuted
+            }
           />
           <Text
             style={[
               styles.tabLabel,
-              currentTab === 'style' && styles.tabLabelActive,
+              currentTab === 'profile' && styles.tabLabelActive,
             ]}
           >
-            Style This
+            Profile
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Freemium Limit Upgrade Modal */}
-      <UpgradeModal
-        visible={upgradeModalVisible}
-        onClose={() => setUpgradeModalVisible(false)}
+      {/* Dismissible Paywall Bottom Sheet (30/30 items limit) */}
+      <PaywallSheet
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
       />
     </SafeAreaView>
   );
@@ -277,69 +415,91 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: theme.spacing[6],
   },
   brandSplashIcon: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: theme.spacing[3],
     ...theme.shadows.md,
   },
   splashTitle: {
-    fontSize: 26,
+    fontSize: theme.typography['2xl'].fontSize,
     fontWeight: '900',
     color: theme.colors.text,
     letterSpacing: -0.5,
   },
   splashStatus: {
-    fontSize: 13,
+    fontSize: theme.typography.sm.fontSize,
     color: theme.colors.textSecondary,
-    marginTop: 10,
+    marginTop: theme.spacing[3],
     fontWeight: '500',
   },
   errorTitle: {
-    fontSize: 18,
+    fontSize: theme.typography.lg.fontSize,
     fontWeight: '800',
     color: theme.colors.text,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: theme.spacing[4],
+    marginBottom: theme.spacing[2],
   },
   errorDescription: {
-    fontSize: 13,
+    fontSize: theme.typography.sm.fontSize,
     color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
-    marginBottom: 20,
+    marginBottom: theme.spacing[5],
     maxWidth: 280,
   },
   retryButton: {
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: theme.spacing[5],
+    paddingVertical: theme.spacing[3],
     borderRadius: theme.radius.md,
   },
   retryButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: theme.typography.sm.fontSize,
     fontWeight: '700',
   },
   tabBar: {
     flexDirection: 'row',
-    height: 60,
+    height: Platform.OS === 'ios' ? 70 : 64,
     backgroundColor: theme.colors.card,
     borderTopWidth: 1,
     borderTopColor: theme.colors.cardBorder,
     alignItems: 'center',
+    paddingBottom: Platform.OS === 'ios' ? 10 : 4,
+    paddingTop: 6,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
+  },
+  centerAddButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    top: -12,
+  },
+  addIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+    ...theme.shadows.md,
+  },
+  addIconCircleActive: {
+    backgroundColor: theme.colors.primaryDark,
+    transform: [{ scale: 1.05 }],
   },
   tabLabel: {
     fontSize: 11,

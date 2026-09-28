@@ -38,7 +38,8 @@
           "photosPermission": "PairFit needs photo library access to upload clothing photos from your gallery.",
           "cameraPermission": "PairFit needs camera access to capture photos of your clothing items."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "apiBaseUrl": "https://jtgohjakh6gsnaiabtdmlyyn.152.67.25.227.sslip.io"
