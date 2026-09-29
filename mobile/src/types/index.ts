@@ -78,6 +78,7 @@ export interface Item {
   s: number;
   l: number;
   photoUrl: string;
+  thumbnailUrl?: string;
   createdAt?: string;
 }
 

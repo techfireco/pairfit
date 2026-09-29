@@ -51,7 +51,8 @@
           "photosPermission": "PairFit needs access to your photos to upload wardrobe items.",
           "cameraPermission": "PairFit needs access to your camera to snap photos of your clothes."
         }
-      ]
+      ],
+      "expo-image"
     ],
     "extra": {
       "apiBaseUrl": "https://jtgohjakh6gsnaiabtdmlyyn.152.67.25.227.sslip.io"

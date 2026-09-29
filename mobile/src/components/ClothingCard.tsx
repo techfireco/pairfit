@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Item, CATEGORY_LABELS } from '../types';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Badge } from './Badge';
@@ -20,7 +20,7 @@ interface ClothingCardProps {
   isDeleting?: boolean;
 }
 
-export function ClothingCard({ item, onPress, onDelete, isDeleting = false }: ClothingCardProps) {
+function ClothingCardComponent({ item, onPress, onDelete, isDeleting = false }: ClothingCardProps) {
   const [isArmed, setIsArmed] = useState(false);
   const armTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -56,12 +56,18 @@ export function ClothingCard({ item, onPress, onDelete, isDeleting = false }: Cl
       <TouchableOpacity
         activeOpacity={onPress ? 0.85 : 1}
         onPress={onPress}
-        style={styles.imageContainer}
+        style={[
+          styles.imageContainer,
+          item.colorHex ? { backgroundColor: `${item.colorHex}18` } : null,
+        ]}
       >
         <Image
-          source={{ uri: item.photoUrl }}
+          source={{ uri: item.thumbnailUrl || item.photoUrl }}
           style={styles.image}
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={150}
+          recyclingKey={item.id}
         />
         <View style={styles.categoryBadgeOverlay}>
           <Badge label={categoryLabel} variant="category" />
@@ -108,6 +114,17 @@ export function ClothingCard({ item, onPress, onDelete, isDeleting = false }: Cl
   );
 }
 
+export const ClothingCard = memo(ClothingCardComponent, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.photoUrl === next.item.photoUrl &&
+    prev.item.name === next.item.name &&
+    prev.item.category === next.item.category &&
+    prev.item.colorHex === next.item.colorHex &&
+    prev.isDeleting === next.isDeleting
+  );
+});
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.card,
@@ -153,12 +170,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
-    paddingVertical: 7,
+    paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 9999,
     backgroundColor: COLORS.cardMuted,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 38,
   },
   deleteButtonArmed: {
     backgroundColor: COLORS.dangerLight,

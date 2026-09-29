@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   FlatList,
-  Image,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Item, Recommendation, CATEGORY_LABELS } from '../../src/types';
@@ -20,6 +20,7 @@ import { Badge } from '../../src/components/Badge';
 import { ColorSwatch } from '../../src/components/ColorSwatch';
 import { ErrorBanner } from '../../src/components/ErrorBanner';
 import { Sparkles, Layers, ArrowRight, Shirt } from 'lucide-react-native';
+import { getColorName } from '../../src/utils/colorTheory';
 
 export default function StyleThisScreen() {
   const [closet, setCloset] = useState<Item[]>([]);
@@ -37,13 +38,35 @@ export default function StyleThisScreen() {
   const loadCloset = useCallback(async () => {
     try {
       const data = await fetchItems();
-      setCloset(data);
+
+      // Prefetch items for instant rendering
+      data.forEach((item) => {
+        if (item.photoUrl) {
+          Image.prefetch(item.photoUrl);
+        }
+      });
+
+      setCloset((prev) => {
+        const prevUrlMap = new Map(prev.map((i) => [i.id, i.photoUrl]));
+        const merged = data.map((item) => ({
+          ...item,
+          photoUrl: prevUrlMap.get(item.id) || item.photoUrl,
+        }));
+        return merged;
+      });
 
       if (data.length > 0) {
-        const target = params.preselectId
-          ? data.find((i) => i.id === params.preselectId) || data[0]
-          : data[0];
-        setSelectedItem(target);
+        setSelectedItem((prevSelected) => {
+          if (params.preselectId) {
+            const preselected = data.find((i) => i.id === params.preselectId);
+            if (preselected) return preselected;
+          }
+          if (prevSelected) {
+            const stillExists = data.find((i) => i.id === prevSelected.id);
+            if (stillExists) return stillExists;
+          }
+          return data[0];
+        });
       } else {
         setSelectedItem(null);
       }
@@ -64,6 +87,12 @@ export default function StyleThisScreen() {
     setError(null);
     try {
       const res = await fetchRecommendationsApi(item.id);
+      // Prefetch match item photos
+      res.recommendations.forEach((rec) => {
+        if (rec.item.photoUrl) {
+          Image.prefetch(rec.item.photoUrl);
+        }
+      });
       setRecommendations(res.recommendations);
     } catch (err: any) {
       setError(err);
@@ -86,10 +115,18 @@ export default function StyleThisScreen() {
     loadCloset();
   };
 
-  const handleSelectItem = (item: Item) => {
-    if (selectedItem?.id === item.id) return;
-    setSelectedItem(item);
-  };
+  const handleSelectItem = useCallback((item: Item) => {
+    setSelectedItem((prev) => (prev?.id === item.id ? prev : item));
+  }, []);
+
+  const renderMatchCard = useCallback(
+    ({ item }: { item: Recommendation }) => (
+      <MatchCard recommendation={item} anchorItem={selectedItem} />
+    ),
+    [selectedItem]
+  );
+
+  const keyExtractor = useCallback((item: Recommendation) => item.item.id, []);
 
   if (isLoadingCloset) {
     return (
@@ -130,11 +167,178 @@ export default function StyleThisScreen() {
     ? CATEGORY_LABELS[selectedItem.category] || selectedItem.category
     : '';
 
+  const selectedColorName = selectedItem
+    ? getColorName(selectedItem.h, selectedItem.s, selectedItem.l, selectedItem.colorHex)
+    : '';
+
+  // Render header component for FlatList
+  const ListHeader = (
+    <View>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Style This</Text>
+        <Text style={styles.subtitle}>Pick any item to see color-ranked matches</Text>
+      </View>
+
+      {/* Horizontal Closet Item Selector */}
+      <View style={styles.selectorSection}>
+        <Text style={styles.sectionLabel}>Select Anchor Piece</Text>
+        <View style={styles.horizontalScrollWrap}>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={closet}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.selectorList}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            renderItem={({ item }) => {
+              const isSelected = selectedItem?.id === item.id;
+              return (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleSelectItem(item)}
+                  style={[
+                    styles.anchorThumbCard,
+                    isSelected && styles.anchorThumbCardSelected,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.thumbImageContainer,
+                      item.colorHex ? { backgroundColor: `${item.colorHex}18` } : null,
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: item.thumbnailUrl || item.photoUrl }}
+                      style={styles.thumbImage}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                      transition={100}
+                      recyclingKey={item.id}
+                    />
+                  </View>
+                  <Text style={styles.thumbName} numberOfLines={1}>
+                    {item.name || 'Piece'}
+                  </Text>
+                  {isSelected && (
+                    <View style={styles.selectedDot}>
+                      <View style={styles.selectedDotInner} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </View>
+
+      {/* Selected Anchor Hero Card */}
+      {selectedItem && (
+        <View style={[styles.heroCard, SHADOWS.card]}>
+          <View style={styles.heroRow}>
+            <View
+              style={[
+                styles.heroImageContainer,
+                selectedItem.colorHex ? { backgroundColor: `${selectedItem.colorHex}18` } : null,
+              ]}
+            >
+              <Image
+                source={{ uri: selectedItem.photoUrl }}
+                style={styles.heroImage}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={100}
+                recyclingKey={selectedItem.id}
+              />
+            </View>
+            <View style={styles.heroInfo}>
+              <View style={styles.heroTagRow}>
+                <View style={styles.anchorBadge}>
+                  <Sparkles size={11} color="#6D28D9" />
+                  <Text style={styles.anchorBadgeText}>ANCHOR PIECE</Text>
+                </View>
+              </View>
+
+              <Text style={styles.heroTitle} numberOfLines={2}>
+                {selectedItem.name || 'Untitled Piece'}
+              </Text>
+
+              <View style={styles.heroMetaRow}>
+                <Badge label={selectedCategoryLabel} variant="category" />
+                <ColorSwatch hex={selectedItem.colorHex} size={14} showHex />
+                <Text style={styles.heroColorName} numberOfLines={1}>
+                  {selectedColorName}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Error Notification */}
+      {error && (
+        <ErrorBanner
+          error={error}
+          onRetry={() => selectedItem && loadRecommendations(selectedItem)}
+          onDismiss={() => setError(null)}
+        />
+      )}
+
+      {/* Results Header */}
+      <View style={styles.resultsHeaderRow}>
+        <Text style={styles.resultsTitle}>Ranked Matches</Text>
+        {recommendations.length > 0 && (
+          <Text style={styles.resultsCount}>
+            {recommendations.length} {recommendations.length === 1 ? 'pairing' : 'pairings'} found
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+
+  const ListEmpty = (
+    <View>
+      {isLoadingRecs ? (
+        <View style={styles.recsLoadingBox}>
+          <ActivityIndicator size="small" color={COLORS.obsidian} />
+          <Text style={styles.recsLoadingText}>Finding best matches…</Text>
+        </View>
+      ) : !error ? (
+        <View style={styles.noMatchesBox}>
+          <View style={styles.noMatchesIcon}>
+            <Layers size={24} color={COLORS.obsidian} />
+          </View>
+          <Text style={styles.noMatchesTitle}>No matching items yet</Text>
+          <Text style={styles.noMatchesText}>
+            Add more clothes in a pairing category (e.g. bottoms if you picked a top, or jackets to layer).
+          </Text>
+          <TouchableOpacity
+            style={styles.addMoreBtn}
+            onPress={() => router.push('/(tabs)/closet')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.addMoreBtnText}>Add More Clothes</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
-      <ScrollView
+      <FlatList
+        data={recommendations}
+        renderItem={renderMatchCard}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -142,125 +346,7 @@ export default function StyleThisScreen() {
             tintColor={COLORS.obsidian}
           />
         }
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Style This</Text>
-          <Text style={styles.subtitle}>Pick any item to see color-ranked matches</Text>
-        </View>
-
-        {/* Horizontal Closet Item Selector - breaks out edge-to-edge */}
-        <View style={styles.selectorSection}>
-          <Text style={styles.sectionLabel}>Select Anchor Piece</Text>
-          <View style={styles.horizontalScrollWrap}>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={closet}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.selectorList}
-              renderItem={({ item }) => {
-                const isSelected = selectedItem?.id === item.id;
-                return (
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => handleSelectItem(item)}
-                    style={[
-                      styles.anchorThumbCard,
-                      isSelected && styles.anchorThumbCardSelected,
-                    ]}
-                  >
-                    <Image source={{ uri: item.photoUrl }} style={styles.thumbImage} />
-                    <Text style={styles.thumbName} numberOfLines={1}>
-                      {item.name || 'Piece'}
-                    </Text>
-                    {isSelected && (
-                      <View style={styles.selectedDot}>
-                        <View style={styles.selectedDotInner} />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          </View>
-        </View>
-
-        {/* Selected Anchor Hero Card */}
-        {selectedItem && (
-          <View style={[styles.heroCard, SHADOWS.card]}>
-            <View style={styles.heroRow}>
-              <Image source={{ uri: selectedItem.photoUrl }} style={styles.heroImage} />
-              <View style={styles.heroInfo}>
-                <View style={styles.heroTagRow}>
-                  <View style={styles.anchorBadge}>
-                    <Sparkles size={11} color="#6D28D9" />
-                    <Text style={styles.anchorBadgeText}>ANCHOR PIECE</Text>
-                  </View>
-                </View>
-
-                <Text style={styles.heroTitle} numberOfLines={2}>
-                  {selectedItem.name || 'Untitled Piece'}
-                </Text>
-
-                <View style={styles.heroMetaRow}>
-                  <Badge label={selectedCategoryLabel} variant="category" />
-                  <ColorSwatch hex={selectedItem.colorHex} size={14} showHex />
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Error Notification with user-friendly formatting & Retry */}
-        {error && (
-          <ErrorBanner
-            error={error}
-            onRetry={() => selectedItem && loadRecommendations(selectedItem)}
-            onDismiss={() => setError(null)}
-          />
-        )}
-
-        {/* Recommendations Section */}
-        <View style={styles.resultsSection}>
-          <View style={styles.resultsHeaderRow}>
-            <Text style={styles.resultsTitle}>Ranked Matches</Text>
-            {recommendations.length > 0 && (
-              <Text style={styles.resultsCount}>
-                {recommendations.length} {recommendations.length === 1 ? 'pairing' : 'pairings'} found
-              </Text>
-            )}
-          </View>
-
-          {isLoadingRecs ? (
-            <View style={styles.recsLoadingBox}>
-              <ActivityIndicator size="small" color={COLORS.obsidian} />
-              <Text style={styles.recsLoadingText}>Finding best matches…</Text>
-            </View>
-          ) : recommendations.length === 0 && !error ? (
-            <View style={styles.noMatchesBox}>
-              <View style={styles.noMatchesIcon}>
-                <Layers size={24} color={COLORS.obsidian} />
-              </View>
-              <Text style={styles.noMatchesTitle}>No matching items yet</Text>
-              <Text style={styles.noMatchesText}>
-                Add more clothes in a pairing category (e.g. bottoms if you picked a top, or jackets to layer).
-              </Text>
-              <TouchableOpacity
-                style={styles.addMoreBtn}
-                onPress={() => router.push('/(tabs)/closet')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.addMoreBtnText}>Add More Clothes</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            recommendations.map((rec) => (
-              <MatchCard key={rec.item.id} recommendation={rec} />
-            ))
-          )}
-        </View>
-      </ScrollView>
+      />
     </View>
   );
 }
@@ -334,12 +420,17 @@ const styles = StyleSheet.create({
     borderColor: COLORS.obsidian,
     backgroundColor: '#FFFFFF',
   },
-  thumbImage: {
+  thumbImageContainer: {
     width: 72,
     height: 72,
     borderRadius: 12,
+    overflow: 'hidden',
     backgroundColor: COLORS.cardMuted,
     marginBottom: 6,
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
   },
   thumbName: {
     fontSize: 11,
@@ -366,22 +457,27 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 22,
-    padding: 16,
+    borderRadius: 20,
+    padding: 14,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 14,
+  },
+  heroImageContainer: {
+    width: 90,
+    height: 90,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: COLORS.cardMuted,
   },
   heroImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 18,
-    backgroundColor: COLORS.cardMuted,
+    width: '100%',
+    height: '100%',
   },
   heroInfo: {
     flex: 1,
@@ -408,25 +504,29 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   heroTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     color: COLORS.obsidian,
-    lineHeight: 22,
-    marginBottom: 8,
+    lineHeight: 21,
+    marginBottom: 6,
   },
   heroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  resultsSection: {
-    marginTop: 4,
+  heroColorName: {
+    fontSize: 11.5,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+    flexShrink: 1,
   },
   resultsHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
+    marginTop: 4,
   },
   resultsTitle: {
     fontSize: 18,

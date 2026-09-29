@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { Item, CATEGORIES } from '../../src/types';
@@ -39,7 +40,37 @@ export default function ClosetScreen() {
     setError(null);
     try {
       const data = await fetchItems();
-      setItems(data);
+      // Prefetch images so they are warm in expo-image disk-memory cache
+      data.forEach((item) => {
+        if (item.photoUrl) {
+          ExpoImage.prefetch(item.photoUrl);
+        }
+      });
+
+      setItems((prev) => {
+        // Keep existing signed URLs during the session to guarantee 100% cache hits
+        const prevUrlMap = new Map(prev.map((i) => [i.id, i.photoUrl]));
+        const merged = data.map((item) => ({
+          ...item,
+          photoUrl: prevUrlMap.get(item.id) || item.photoUrl,
+        }));
+
+        if (
+          prev.length === merged.length &&
+          prev.every(
+            (p, idx) =>
+              p.id === merged[idx].id &&
+              p.photoUrl === merged[idx].photoUrl &&
+              p.name === merged[idx].name &&
+              p.category === merged[idx].category &&
+              p.colorHex === merged[idx].colorHex
+          )
+        ) {
+          return prev;
+        }
+        return merged;
+      });
+
       await refreshMe();
     } catch (err: any) {
       setError(err);
@@ -51,7 +82,8 @@ export default function ClosetScreen() {
 
   useEffect(() => {
     loadWardrobe();
-  }, [loadWardrobe]);
+    // Only run on initial mount to prevent refetch loops
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);

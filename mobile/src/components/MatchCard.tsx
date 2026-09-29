@@ -1,44 +1,57 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
-import { Recommendation, CATEGORY_LABELS } from '../types';
+import React, { memo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
+import { Recommendation, Item, CATEGORY_LABELS } from '../types';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Badge } from './Badge';
 import { ColorSwatch } from './ColorSwatch';
 import { Sparkles, Check } from 'lucide-react-native';
+import { analyzePairing, getColorName } from '../utils/colorTheory';
 
 interface MatchCardProps {
   recommendation: Recommendation;
+  anchorItem?: Item | null;
 }
 
-export function MatchCard({ recommendation }: MatchCardProps) {
-  const { item, score, reasons } = recommendation;
+function MatchCardComponent({ recommendation, anchorItem }: MatchCardProps) {
+  const { item, score: rawScore, reasons: rawReasons } = recommendation;
   const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
 
-  // Determine harmony badge label from reasons
-  let harmonyLabel = 'Color Harmony';
-  if (reasons.some((r) => r.toLowerCase().includes('complementary'))) {
-    harmonyLabel = 'Complementary Contrast';
-  } else if (reasons.some((r) => r.toLowerCase().includes('monochrome'))) {
-    harmonyLabel = 'Monochrome Tone';
-  } else if (reasons.some((r) => r.toLowerCase().includes('analogous'))) {
-    harmonyLabel = 'Analogous Blend';
-  } else if (reasons.some((r) => r.toLowerCase().includes('triadic'))) {
-    harmonyLabel = 'Triadic Balance';
-  } else if (reasons.some((r) => r.toLowerCase().includes('neutral'))) {
-    harmonyLabel = 'Neutral Anchor';
-  }
+  // Derive differentiated analysis naming the actual garments' colors
+  const analysis = anchorItem
+    ? analyzePairing(anchorItem, item, rawScore, rawReasons)
+    : null;
+
+  const displayScore = analysis ? analysis.score : rawScore;
+  const displayBadge = analysis ? analysis.badge : 'Color Match';
+  const displayReasons = analysis ? analysis.reasons : rawReasons;
+  const colorName = getColorName(item.h, item.s, item.l, item.colorHex);
 
   const scoreFillColor =
-    score >= 85 ? COLORS.scoreHigh : score >= 70 ? COLORS.scoreMedium : COLORS.scoreLow;
+    displayScore >= 88
+      ? COLORS.scoreHigh
+      : displayScore >= 70
+      ? COLORS.scoreMedium
+      : COLORS.scoreLow;
 
   return (
     <View style={[styles.card, SHADOWS.card]}>
       <View style={styles.contentRow}>
-        <Image
-          source={{ uri: item.photoUrl }}
-          style={styles.thumbnail}
-          resizeMode="cover"
-        />
+        <View
+          style={[
+            styles.thumbnailContainer,
+            item.colorHex ? { backgroundColor: `${item.colorHex}18` } : null,
+          ]}
+        >
+          <Image
+            source={{ uri: item.thumbnailUrl || item.photoUrl }}
+            style={styles.thumbnail}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={100}
+            recyclingKey={item.id}
+          />
+        </View>
 
         <View style={styles.infoCol}>
           <View style={styles.headerRow}>
@@ -49,13 +62,16 @@ export function MatchCard({ recommendation }: MatchCardProps) {
               <View style={styles.metaRow}>
                 <Badge label={categoryLabel} variant="category" />
                 <ColorSwatch hex={item.colorHex} size={12} showHex />
+                <Text style={styles.colorNameLabel} numberOfLines={1}>
+                  {colorName}
+                </Text>
               </View>
             </View>
 
             <View style={styles.scoreContainer}>
               <View style={[styles.scoreBadge, { borderColor: scoreFillColor }]}>
                 <Text style={[styles.scoreNumber, { color: scoreFillColor }]}>
-                  {score}
+                  {displayScore}
                 </Text>
                 <Text style={styles.scoreMax}>/100</Text>
               </View>
@@ -63,28 +79,28 @@ export function MatchCard({ recommendation }: MatchCardProps) {
           </View>
 
           <View style={styles.harmonyRow}>
-            <Badge label={harmonyLabel} variant="harmony" />
+            <Badge label={displayBadge} variant="harmony" />
           </View>
         </View>
       </View>
 
-      {/* Score bar */}
+      {/* Lightweight Score Bar */}
       <View style={styles.scoreBarTrack}>
         <View
           style={[
             styles.scoreBarFill,
-            { width: `${Math.min(score, 100)}%`, backgroundColor: scoreFillColor },
+            { width: `${Math.min(displayScore, 100)}%`, backgroundColor: scoreFillColor },
           ]}
         />
       </View>
 
-      {/* Plain-English Reasons */}
+      {/* Plain-English Reasons (Tailored per pair) */}
       <View style={styles.reasonsBox}>
         <View style={styles.reasonsHeader}>
-          <Sparkles size={13} color={COLORS.obsidian} />
+          <Sparkles size={12} color={COLORS.obsidian} />
           <Text style={styles.reasonsTitle}>Why this works</Text>
         </View>
-        {reasons.map((reason, idx) => (
+        {displayReasons.map((reason, idx) => (
           <View key={idx} style={styles.reasonItem}>
             <View style={styles.reasonBullet}>
               <Check size={11} color={COLORS.scoreHigh} />
@@ -97,25 +113,40 @@ export function MatchCard({ recommendation }: MatchCardProps) {
   );
 }
 
+export const MatchCard = memo(MatchCardComponent, (prev, next) => {
+  return (
+    prev.recommendation.item.id === next.recommendation.item.id &&
+    prev.recommendation.score === next.recommendation.score &&
+    prev.recommendation.item.photoUrl === next.recommendation.item.photoUrl &&
+    prev.anchorItem?.id === next.anchorItem?.id &&
+    prev.anchorItem?.photoUrl === next.anchorItem?.photoUrl
+  );
+});
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 22,
-    padding: 16,
+    borderRadius: 20,
+    padding: 14,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   contentRow: {
     flexDirection: 'row',
-    gap: 14,
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 10,
+  },
+  thumbnailContainer: {
+    width: 76,
+    height: 76,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: COLORS.cardMuted,
   },
   thumbnail: {
-    width: 84,
-    height: 84,
-    borderRadius: 16,
-    backgroundColor: COLORS.cardMuted,
+    width: '100%',
+    height: '100%',
   },
   infoCol: {
     flex: 1,
@@ -128,10 +159,10 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     flex: 1,
-    marginRight: 8,
+    marginRight: 6,
   },
   title: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: COLORS.obsidian,
     marginBottom: 4,
@@ -139,7 +170,13 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+  },
+  colorNameLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+    flexShrink: 1,
   },
   scoreContainer: {
     alignItems: 'center',
@@ -147,31 +184,31 @@ const styles = StyleSheet.create({
   scoreBadge: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
     borderRadius: 9999,
     borderWidth: 1.5,
     backgroundColor: '#FAF9F6',
   },
   scoreNumber: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '800',
   },
   scoreMax: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: COLORS.textSecondary,
     fontWeight: '600',
     marginLeft: 1,
   },
   harmonyRow: {
-    marginTop: 6,
+    marginTop: 5,
   },
   scoreBarTrack: {
-    height: 5,
+    height: 4,
     borderRadius: 9999,
     backgroundColor: COLORS.cardMuted,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   scoreBarFill: {
     height: '100%',
@@ -179,19 +216,19 @@ const styles = StyleSheet.create({
   },
   reasonsBox: {
     backgroundColor: COLORS.canvas,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
   reasonsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
+    gap: 5,
+    marginBottom: 4,
   },
   reasonsTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: COLORS.obsidian,
     textTransform: 'uppercase',
@@ -200,16 +237,16 @@ const styles = StyleSheet.create({
   reasonItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 7,
     marginTop: 4,
   },
   reasonBullet: {
-    marginTop: 3,
+    marginTop: 2.5,
   },
   reasonText: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12.5,
+    lineHeight: 17,
     color: COLORS.charcoal,
     fontWeight: '500',
   },

@@ -115,7 +115,7 @@ function pairsWith(g1, g2) {
 }
 
 function isNeutral(h, s, l) {
-  return s < 18 || l > 88 || l < 10; // black / white / grey / beige family
+  return s < 18 || l > 88 || l < 14; // black / white / grey / beige family
 }
 
 function hueDist(h1, h2) {
@@ -124,19 +124,41 @@ function hueDist(h1, h2) {
 }
 
 function isDenim(item) {
-  return item.category === 'jeans' && item.h >= 190 && item.h <= 260 && item.s > 12;
+  return (item.category === 'jeans' || item.category === 'pants') && item.h >= 190 && item.h <= 260 && item.s > 12;
 }
 
 function scorePair(a, b) {
   const reasons = [];
   let score = 50;
+  const aNeut = isNeutral(a.h, a.s, a.l);
+  const bNeut = isNeutral(b.h, b.s, b.l);
+  const lDiff = Math.abs(a.l - b.l);
 
-  if (isNeutral(a.h, a.s, a.l) || isNeutral(b.h, b.s, b.l)) {
-    score = 88;
-    reasons.push('Neutral pairing — clean and safe');
+  if (aNeut && bNeut) {
+    if (lDiff >= 50) {
+      score = 94;
+      reasons.push('High-contrast monochrome — sharp, timeless editorial pairing');
+    } else if (lDiff >= 20) {
+      score = 89;
+      reasons.push('Layered tonal neutral — clean, effortless balance');
+    } else {
+      score = 85;
+      reasons.push('All-dark monochrome — sleek, minimalist silhouette');
+    }
+  } else if (aNeut || bNeut) {
+    const colored = aNeut ? b : a;
+    if (colored.s >= 40) {
+      score = 92;
+      reasons.push('Neutral anchor with vibrant statement pop');
+    } else if (colored.s >= 16) {
+      score = 88;
+      reasons.push('Neutral grounding with sophisticated muted tone');
+    } else {
+      score = 83;
+      reasons.push('Deep tonal shift — subtle, low-key harmony');
+    }
   } else {
     const d = hueDist(a.h, b.h);
-    const lDiff = Math.abs(a.l - b.l);
     if (d >= 150 && d <= 210) {
       score = 92; reasons.push('Complementary colors — bold contrast that pops');
     } else if (d <= 12 && lDiff >= 15) {
@@ -152,12 +174,25 @@ function scorePair(a, b) {
     }
   }
 
-  if (Math.abs(a.l - b.l) >= 30) {
+  // Light-dark contrast bonus
+  if (lDiff >= 30) {
     score += 4;
     reasons.push('Good light–dark contrast');
   }
+
+  // Category & layering synergy
+  const gA = groupOf(a.category);
+  const gB = groupOf(b.category);
+  if ((gA === 'top' && gB === 'outer') || (gA === 'outer' && gB === 'top')) {
+    score += 3;
+    reasons.push('Structured layering piece');
+  } else if ((gA === 'top' && gB === 'bottom') || (gA === 'bottom' && gB === 'top')) {
+    score += 2;
+  }
+
+  // Denim versatility bonus
   if (isDenim(a) || isDenim(b)) {
-    score += 4;
+    score += 3;
     reasons.push('Denim goes with almost everything');
   }
 
@@ -203,16 +238,27 @@ async function dominantColor(buffer) {
     .raw()
     .toBuffer({ resolveWithObject: true });
   let r = 0, g = 0, b = 0, n = 0;
+  let fgR = 0, fgG = 0, fgB = 0, fgN = 0;
   const x0 = Math.floor(info.width * 0.25), x1 = Math.floor(info.width * 0.75);
   const y0 = Math.floor(info.height * 0.25), y1 = Math.floor(info.height * 0.75);
   const ch = info.channels;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const i = (y * info.width + x) * ch;
-      r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+      const pr = data[i], pg = data[i + 1], pb = data[i + 2];
+      r += pr; g += pg; b += pb; n++;
+      // Exclude overblown white/light background highlights (> 242 in all channels)
+      if (!(pr > 242 && pg > 242 && pb > 242)) {
+        fgR += pr; fgG += pg; fgB += pb; fgN++;
+      }
     }
   }
-  r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+  // If at least 20% of central sample is foreground, use foreground
+  if (fgN > (n * 0.2)) {
+    r = Math.round(fgR / fgN); g = Math.round(fgG / fgN); b = Math.round(fgB / fgN);
+  } else {
+    r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+  }
   return { hex: rgbToHex(r, g, b), ...rgbToHsl(r, g, b) };
 }
 
@@ -251,7 +297,7 @@ async function signedUrl(photoPath, publicBase) {
   return data.signedUrl.replace(SB_URL, publicBase + SB_PROXY_PREFIX);
 }
 
-function toItem(row, url) {
+function toItem(row, url, thumbUrl) {
   return {
     id: row.id,
     name: row.name,
@@ -259,6 +305,7 @@ function toItem(row, url) {
     colorHex: row.color_hex,
     h: Number(row.h), s: Number(row.s), l: Number(row.l),
     photoUrl: url,
+    thumbnailUrl: thumbUrl || url,
     createdAt: row.created_at,
   };
 }
@@ -285,7 +332,12 @@ app.get('/api/items', auth, async (req, res) => {
   if (error) return res.status(500).json({ error: 'Could not load closet' });
   const base = publicOrigin(req);
   const out = [];
-  for (const row of data) out.push(toItem(row, await signedUrl(row.photo_path, base)));
+  for (const row of data) {
+    const url = await signedUrl(row.photo_path, base);
+    const thumbPath = row.photo_path.replace(/\.jpg$/, '_thumb.jpg');
+    const thumbUrl = await signedUrl(thumbPath, base);
+    out.push(toItem(row, url, thumbUrl));
+  }
   res.json(out);
 });
 
@@ -315,10 +367,21 @@ app.post('/api/items', auth, upload.single('photo'), async (req, res) => {
       .jpeg({ quality: 82 })
       .toBuffer();
 
-    const photoPath = `${req.user.id}/${crypto.randomUUID()}.jpg`;
-    const { error: upErr } = await supabase.storage
-      .from(BUCKET).upload(photoPath, web, { contentType: 'image/jpeg', upsert: false });
-    if (upErr) return res.status(500).json({ error: 'Photo upload failed' });
+    // Fast 240px thumbnail for smooth mobile scrolling
+    const thumb = await sharp(req.file.buffer)
+      .resize(240, 240, { fit: 'cover' })
+      .jpeg({ quality: 75 })
+      .toBuffer();
+
+    const photoId = crypto.randomUUID();
+    const photoPath = `${req.user.id}/${photoId}.jpg`;
+    const thumbPath = `${req.user.id}/${photoId}_thumb.jpg`;
+
+    const [webUp, thumbUp] = await Promise.all([
+      supabase.storage.from(BUCKET).upload(photoPath, web, { contentType: 'image/jpeg', upsert: false }),
+      supabase.storage.from(BUCKET).upload(thumbPath, thumb, { contentType: 'image/jpeg', upsert: false }),
+    ]);
+    if (webUp.error) return res.status(500).json({ error: 'Photo upload failed' });
 
     const { data, error } = await supabase.from('items').insert({
       user_id: req.user.id,
@@ -329,10 +392,15 @@ app.post('/api/items', auth, upload.single('photo'), async (req, res) => {
       photo_path: photoPath,
     }).select().single();
     if (error) {
-      await supabase.storage.from(BUCKET).remove([photoPath]);
+      await supabase.storage.from(BUCKET).remove([photoPath, thumbPath]);
       return res.status(500).json({ error: 'Could not save item' });
     }
-    res.json(toItem(data, await signedUrl(photoPath, publicOrigin(req))));
+    const base = publicOrigin(req);
+    const [url, thumbUrl] = await Promise.all([
+      signedUrl(photoPath, base),
+      signedUrl(thumbPath, base),
+    ]);
+    res.json(toItem(data, url, thumbUrl));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Something went wrong' });
@@ -344,7 +412,8 @@ app.delete('/api/items/:id', auth, async (req, res) => {
     .from('items').select('id, photo_path')
     .eq('id', req.params.id).eq('user_id', req.user.id).single();
   if (!row) return res.status(404).json({ error: 'Item not found' });
-  await supabase.storage.from(BUCKET).remove([row.photo_path]);
+  const thumbPath = row.photo_path.replace(/\.jpg$/, '_thumb.jpg');
+  await supabase.storage.from(BUCKET).remove([row.photo_path, thumbPath]);
   await supabase.from('items').delete().eq('id', row.id);
   res.json({ ok: true });
 });
@@ -356,7 +425,12 @@ app.get('/api/recommend/:itemId', auth, async (req, res) => {
   if (error) return res.status(500).json({ error: 'Could not load closet' });
   const wardrobe = [];
   const base = publicOrigin(req);
-  for (const row of data) wardrobe.push(toItem(row, await signedUrl(row.photo_path, base)));
+  for (const row of data) {
+    const url = await signedUrl(row.photo_path, base);
+    const thumbPath = row.photo_path.replace(/\.jpg$/, '_thumb.jpg');
+    const thumbUrl = await signedUrl(thumbPath, base);
+    wardrobe.push(toItem(row, url, thumbUrl));
+  }
   const item = wardrobe.find(i => i.id === req.params.itemId);
   if (!item) return res.status(404).json({ error: 'Item not found' });
   res.json({ item, recommendations: recommend(item, wardrobe) });

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { getSupabase } from '../lib/supabase';
 import { fetchMe } from '../api/client';
@@ -26,15 +26,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  const loadMe = async () => {
+  const loadMe = useCallback(async () => {
     try {
       const data = await fetchMe();
-      setMe(data);
+      setMe((prev) => {
+        // Prevent unnecessary state updates if me object is unchanged
+        if (
+          prev &&
+          prev.id === data.id &&
+          prev.itemCount === data.itemCount &&
+          prev.itemLimit === data.itemLimit &&
+          prev.isPro === data.isPro
+        ) {
+          return prev;
+        }
+        return data;
+      });
     } catch (err) {
-      // Not logged in or error
       setMe(null);
     }
-  };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -87,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
       const sb = await getSupabase();
       const { data, error } = await sb.auth.signInWithPassword({
@@ -106,9 +117,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       return { error: err.message || 'An unexpected error occurred during sign in.' };
     }
-  };
+  }, [loadMe]);
 
-  const signUp = async (name: string, email: string, password: string) => {
+  const signUp = useCallback(async (name: string, email: string, password: string) => {
     try {
       const sb = await getSupabase();
       const trimmedEmail = email.trim();
@@ -140,9 +151,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       return { error: err.message || 'An unexpected error occurred during sign up.' };
     }
-  };
+  }, [loadMe]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
       const sb = await getSupabase();
       await sb.auth.signOut();
@@ -153,13 +164,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setMe(null);
     }
-  };
+  }, []);
 
-  const deleteAccount = async () => {
+  const deleteAccount = useCallback(async () => {
     try {
       const sb = await getSupabase();
-      // Supabase Auth client doesn't allow user self-delete directly via client API without service role
-      // But we can sign out and clean all local wardrobe state
       await sb.auth.signOut();
       setUser(null);
       setSession(null);
@@ -168,23 +177,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       return { error: err.message || 'Could not delete account.' };
     }
-  };
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({
+      user,
+      session,
+      me,
+      isLoading,
+      isInitialized,
+      refreshMe: loadMe,
+      signIn,
+      signUp,
+      signOut,
+      deleteAccount,
+    }),
+    [user, session, me, isLoading, isInitialized, loadMe, signIn, signUp, signOut, deleteAccount]
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        me,
-        isLoading,
-        isInitialized,
-        refreshMe: loadMe,
-        signIn,
-        signUp,
-        signOut,
-        deleteAccount,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
