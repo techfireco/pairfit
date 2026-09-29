@@ -1,14 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   ActivityIndicator,
+  Alert,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { COLORS, SHADOWS } from '../../src/constants/theme';
 import { PaywallModal } from '../../src/components/PaywallModal';
@@ -19,56 +21,50 @@ import {
   LogOut,
   Trash2,
   ChevronRight,
-  Sparkles,
   Zap,
+  Mail,
 } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const { user, me, signOut, deleteAccount } = useAuth();
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isDeleteArmed, setIsDeleteArmed] = useState(false);
-  const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const router = useRouter();
-
-  useEffect(() => {
-    return () => {
-      if (deleteTimeoutRef.current) {
-        clearTimeout(deleteTimeoutRef.current);
-      }
-    };
-  }, []);
+  const insets = useSafeAreaInsets();
 
   const handleSignOut = async () => {
     await signOut();
     router.replace('/welcome');
   };
 
-  const handleDeleteAccountPress = async () => {
-    if (!isDeleteArmed) {
-      setIsDeleteArmed(true);
-      deleteTimeoutRef.current = setTimeout(() => {
-        setIsDeleteArmed(false);
-      }, 4000);
-      return;
-    }
+  const handleDeleteAccountPress = () => {
+    // Explicit confirmed dialog before deletion
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your account and all wardrobe items? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            const res = await deleteAccount();
+            setIsDeleting(false);
+            if (res.error) {
+              Alert.alert('Error', res.error);
+            } else {
+              router.replace('/welcome');
+            }
+          },
+        },
+      ]
+    );
+  };
 
-    // Second tap: execute delete
-    if (deleteTimeoutRef.current) {
-      clearTimeout(deleteTimeoutRef.current);
-    }
-    setIsDeleteArmed(false);
-    setIsDeleting(true);
-
-    const res = await deleteAccount();
-    setIsDeleting(false);
-
-    if (res.error) {
-      alert(res.error);
-    } else {
-      router.replace('/welcome');
-    }
+  const handleSupportPress = () => {
+    Linking.openURL('mailto:support@getpairfit.com?subject=PairFit%20App%20Support');
   };
 
   const count = me?.itemCount ?? 0;
@@ -77,11 +73,11 @@ export default function ProfileScreen() {
   const progressRatio = isPro ? 1 : Math.min(count / limit, 1);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header */}
+        {/* Header (C5: Title matches tab label 'Profile') */}
         <View style={styles.header}>
-          <Text style={styles.title}>Account</Text>
+          <Text style={styles.title}>Profile</Text>
         </View>
 
         {/* User Card */}
@@ -91,23 +87,23 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>
-              {user?.user_metadata?.name || 'PairFit Stylist'}
+              {user?.user_metadata?.name || 'PairFit Member'}
             </Text>
             <Text style={styles.userEmail}>{user?.email || 'user@pairfit.app'}</Text>
           </View>
         </View>
 
-        {/* Plan Status Card */}
+        {/* Plan Status Card (C6: Consistent wording) */}
         <View style={[styles.planCard, SHADOWS.card]}>
           <View style={styles.planHeader}>
             <View>
               <Text style={styles.planTitle}>{isPro ? 'PairFit Pro' : 'Free Plan'}</Text>
               <Text style={styles.planSubtitle}>
-                {isPro ? 'Unlimited clothing items' : `${count} of ${limit} items used`}
+                {isPro ? 'Unlimited clothing items' : `${count} / ${limit} items (Free plan)`}
               </Text>
             </View>
             <View style={styles.planBadge}>
-              <Text style={styles.planBadgeText}>{isPro ? 'ACTIVE' : 'FREE'}</Text>
+              <Text style={styles.planBadgeText}>{isPro ? 'PRO' : 'FREE'}</Text>
             </View>
           </View>
 
@@ -128,19 +124,20 @@ export default function ProfileScreen() {
               style={[styles.upgradeBannerBtn, SHADOWS.button]}
               onPress={() => setIsPaywallOpen(true)}
             >
-              <Zap size={15} color="#FFFFFF" />
+              <Zap size={16} color="#FFFFFF" />
               <Text style={styles.upgradeBtnText}>Upgrade to Unlimited Pro</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Legal & Compliance Section */}
+        {/* Legal & Information Section */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>Legal & Information</Text>
           <View style={[styles.menuGroup, SHADOWS.soft]}>
             <TouchableOpacity
               style={styles.menuRow}
               onPress={() => router.push('/legal/terms')}
+              activeOpacity={0.7}
             >
               <View style={styles.menuIconWrap}>
                 <FileText size={18} color={COLORS.obsidian} />
@@ -154,11 +151,26 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={styles.menuRow}
               onPress={() => router.push('/legal/privacy')}
+              activeOpacity={0.7}
             >
               <View style={styles.menuIconWrap}>
                 <Shield size={18} color={COLORS.obsidian} />
               </View>
               <Text style={styles.menuLabel}>Privacy Policy</Text>
+              <ChevronRight size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuRow}
+              onPress={handleSupportPress}
+              activeOpacity={0.7}
+            >
+              <View style={styles.menuIconWrap}>
+                <Mail size={18} color={COLORS.obsidian} />
+              </View>
+              <Text style={styles.menuLabel}>Contact Support</Text>
               <ChevronRight size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
@@ -168,7 +180,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>Session</Text>
           <View style={[styles.menuGroup, SHADOWS.soft]}>
-            <TouchableOpacity style={styles.menuRow} onPress={handleSignOut}>
+            <TouchableOpacity style={styles.menuRow} onPress={handleSignOut} activeOpacity={0.7}>
               <View style={styles.menuIconWrap}>
                 <LogOut size={18} color={COLORS.obsidian} />
               </View>
@@ -183,26 +195,17 @@ export default function ProfileScreen() {
           <Text style={styles.sectionHeader}>Danger Zone</Text>
           <View style={[styles.menuGroup, SHADOWS.soft]}>
             <TouchableOpacity
-              style={[
-                styles.deleteRow,
-                isDeleteArmed && styles.deleteRowArmed,
-              ]}
+              style={styles.deleteRow}
               onPress={handleDeleteAccountPress}
               disabled={isDeleting}
+              activeOpacity={0.7}
             >
               {isDeleting ? (
                 <ActivityIndicator size="small" color={COLORS.danger} />
               ) : (
                 <>
                   <Trash2 size={18} color={COLORS.danger} />
-                  <Text
-                    style={[
-                      styles.deleteLabel,
-                      isDeleteArmed && styles.deleteLabelArmed,
-                    ]}
-                  >
-                    {isDeleteArmed ? 'Tap again to permanently delete account' : 'Delete Account'}
-                  </Text>
+                  <Text style={styles.deleteLabel}>Delete Account</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -210,7 +213,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Version footer */}
-        <Text style={styles.versionText}>PairFit Mobile v1.0.0 • React Native + Expo</Text>
+        <Text style={styles.versionText}>PairFit v1.0.0 (Build 1)</Text>
 
         {/* Pro Paywall Modal */}
         <PaywallModal
@@ -218,28 +221,28 @@ export default function ProfileScreen() {
           onClose={() => setIsPaywallOpen(false)}
         />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screen: {
     flex: 1,
     backgroundColor: COLORS.canvas,
   },
   container: {
-    paddingHorizontal: 18,
-    paddingTop: 12,
+    paddingHorizontal: 20,
     paddingBottom: 36,
   },
   header: {
     marginBottom: 16,
+    paddingRight: 48, // Generous padding so Expo Go gear button doesn't cover title
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: COLORS.obsidian,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   userCard: {
     flexDirection: 'row',
@@ -253,9 +256,9 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   avatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: COLORS.cardMuted,
     alignItems: 'center',
     justifyContent: 'center',
@@ -270,7 +273,7 @@ const styles = StyleSheet.create({
   },
   userEmail: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: '#4B5563', // Darkened for accessibility
     marginTop: 2,
   },
   planCard: {
@@ -294,7 +297,7 @@ const styles = StyleSheet.create({
   },
   planSubtitle: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: '#4B5563',
     marginTop: 2,
   },
   planBadge: {
@@ -306,7 +309,7 @@ const styles = StyleSheet.create({
     borderColor: '#DDD6FE',
   },
   planBadgeText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '800',
     color: '#6D28D9',
     letterSpacing: 0.6,
@@ -331,6 +334,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.obsidian,
     borderRadius: 9999,
     paddingVertical: 12,
+    minHeight: 46,
   },
   upgradeBtnText: {
     color: '#FFFFFF',
@@ -343,7 +347,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.textSecondary,
+    color: '#4B5563',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 8,
@@ -359,9 +363,10 @@ const styles = StyleSheet.create({
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 15,
     paddingHorizontal: 16,
     gap: 12,
+    minHeight: 48, // 48dp accessible tap target
   },
   menuIconWrap: {
     width: 32,
@@ -387,23 +392,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 14,
+    paddingVertical: 15,
     paddingHorizontal: 16,
-  },
-  deleteRowArmed: {
-    backgroundColor: COLORS.dangerLight,
+    minHeight: 48,
   },
   deleteLabel: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.danger,
   },
-  deleteLabelArmed: {
-    fontWeight: '700',
-  },
   versionText: {
-    fontSize: 11.5,
-    color: COLORS.textMuted,
+    fontSize: 12,
+    color: '#6B7280',
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 16,

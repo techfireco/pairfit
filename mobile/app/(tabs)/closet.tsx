@@ -5,11 +5,11 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { Item, CATEGORIES } from '../../src/types';
 import { fetchItems, deleteItemApi } from '../../src/api/client';
@@ -18,7 +18,8 @@ import { ClothingCard } from '../../src/components/ClothingCard';
 import { Badge } from '../../src/components/Badge';
 import { AddItemModal } from '../../src/components/AddItemModal';
 import { PaywallModal } from '../../src/components/PaywallModal';
-import { Plus, Sparkles, AlertCircle } from 'lucide-react-native';
+import { ErrorBanner } from '../../src/components/ErrorBanner';
+import { Plus, Shirt } from 'lucide-react-native';
 
 export default function ClosetScreen() {
   const [items, setItems] = useState<Item[]>([]);
@@ -28,10 +29,11 @@ export default function ClosetScreen() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<any>(null);
 
   const { me, refreshMe } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const loadWardrobe = useCallback(async () => {
     setError(null);
@@ -40,7 +42,7 @@ export default function ClosetScreen() {
       setItems(data);
       await refreshMe();
     } catch (err: any) {
-      setError(err.message || 'Could not load your closet.');
+      setError(err);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -63,7 +65,7 @@ export default function ClosetScreen() {
       setItems((prev) => prev.filter((item) => item.id !== id));
       await refreshMe();
     } catch (err: any) {
-      alert(err.message || 'Failed to remove piece.');
+      setError(err);
     } finally {
       setDeletingId(null);
     }
@@ -76,9 +78,12 @@ export default function ClosetScreen() {
     return cat ? cat.group === selectedGroup : selectedGroup === 'top';
   });
 
-  const planBadgeText = me?.isPro
+  const count = me?.itemCount ?? items.length;
+  const limit = me?.itemLimit ?? 30;
+  const isPro = me?.isPro ?? false;
+  const planBadgeText = isPro
     ? 'Pro plan — unlimited items'
-    : `${me?.itemCount ?? items.length} / ${me?.itemLimit ?? 30} items (Free plan)`;
+    : `${count} / ${limit} items (Free plan)`;
 
   const filterTabs = [
     { key: 'all', label: 'All' },
@@ -88,29 +93,34 @@ export default function ClosetScreen() {
     { key: 'onepiece', label: 'One-Piece' },
   ];
 
+  const isEmpty = items.length === 0;
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.titleColumn}>
             <Text style={styles.headerTitle}>My Closet</Text>
             <View style={styles.badgeRow}>
               <Badge label={planBadgeText} variant="plan" />
             </View>
           </View>
 
-          <TouchableOpacity
-            style={[styles.addButton, SHADOWS.button]}
-            onPress={() => setIsAddModalOpen(true)}
-            activeOpacity={0.8}
-          >
-            <Plus size={18} color="#FFFFFF" />
-            <Text style={styles.addButtonText}>Add Piece</Text>
-          </TouchableOpacity>
+          {/* Hide header CTA when closet is empty so there's one clear primary action */}
+          {!isEmpty && (
+            <TouchableOpacity
+              style={[styles.addButton, SHADOWS.button]}
+              onPress={() => setIsAddModalOpen(true)}
+              activeOpacity={0.8}
+            >
+              <Plus size={18} color="#FFFFFF" />
+              <Text style={styles.addButtonText}>Add Piece</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Filter Chips */}
+        {/* Filter Chips - marginHorizontal breaks out to screen edges so chips don't clip */}
         <View style={styles.filtersContainer}>
           <FlatList
             horizontal
@@ -122,6 +132,7 @@ export default function ClosetScreen() {
               const isSelected = selectedGroup === item.key;
               return (
                 <TouchableOpacity
+                  activeOpacity={0.8}
                   style={[styles.filterChip, isSelected && styles.filterChipSelected]}
                   onPress={() => setSelectedGroup(item.key)}
                 >
@@ -139,15 +150,16 @@ export default function ClosetScreen() {
           />
         </View>
 
-        {/* Error Notification */}
+        {/* User-friendly Error Notification with Retry & Dismiss */}
         {error && (
-          <View style={styles.errorBox}>
-            <AlertCircle size={16} color={COLORS.danger} />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
+          <ErrorBanner
+            error={error}
+            onRetry={loadWardrobe}
+            onDismiss={() => setError(null)}
+          />
         )}
 
-        {/* Wardrobe Grid */}
+        {/* Wardrobe Grid or Empty State */}
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={COLORS.obsidian} />
@@ -156,25 +168,26 @@ export default function ClosetScreen() {
         ) : filteredItems.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconWrap}>
-              <Sparkles size={32} color={COLORS.textSecondary} />
+              <Shirt size={32} color={COLORS.obsidian} />
             </View>
             <Text style={styles.emptyTitle}>
-              {items.length === 0 ? 'Your closet is empty' : 'No items in this category'}
+              {isEmpty ? 'Your closet is empty' : 'No items in this category'}
             </Text>
             <Text style={styles.emptySubtitle}>
-              {items.length === 0
+              {isEmpty
                 ? 'Snap or upload clothing photos to see color-ranked pairings.'
-                : 'Try picking another category or add a new piece above.'}
+                : 'Try picking another category or add a new piece to your closet.'}
             </Text>
-            {items.length === 0 && (
-              <TouchableOpacity
-                style={[styles.emptyAddBtn, SHADOWS.button]}
-                onPress={() => setIsAddModalOpen(true)}
-              >
-                <Plus size={16} color="#FFFFFF" />
-                <Text style={styles.emptyAddBtnText}>Add First Clothing Item</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[styles.emptyAddBtn, SHADOWS.button]}
+              onPress={() => setIsAddModalOpen(true)}
+              activeOpacity={0.85}
+            >
+              <Plus size={18} color="#FFFFFF" />
+              <Text style={styles.emptyAddBtnText}>
+                {isEmpty ? 'Add First Clothing Item' : 'Add Clothing Item'}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <FlatList
@@ -195,7 +208,6 @@ export default function ClosetScreen() {
               <ClothingCard
                 item={item}
                 onPress={() => {
-                  // Direct to Style This tab with this item preselected
                   router.push({
                     pathname: '/(tabs)/style',
                     params: { preselectId: item.id },
@@ -225,34 +237,37 @@ export default function ClosetScreen() {
           onClose={() => setIsPaywallOpen(false)}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screen: {
     flex: 1,
     backgroundColor: COLORS.canvas,
   },
   container: {
     flex: 1,
-    paddingHorizontal: 18,
-    paddingTop: 12,
+    paddingHorizontal: 20,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    alignItems: 'flex-start',
+    paddingBottom: 16,
+    paddingRight: 48, // Generous right margin so Expo Go floating gear icon never covers the header buttons
+  },
+  titleColumn: {
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: COLORS.obsidian,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   badgeRow: {
-    marginTop: 4,
+    marginTop: 8,
   },
   addButton: {
     flexDirection: 'row',
@@ -262,6 +277,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 9999,
+    minHeight: 44, // 44dp tap target
   },
   addButtonText: {
     color: '#FFFFFF',
@@ -269,48 +285,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   filtersContainer: {
+    marginHorizontal: -20, // Negative margin allows edge-to-edge scroll
     marginBottom: 16,
   },
   filterList: {
-    gap: 8,
+    paddingHorizontal: 20, // Content padding ensures first chip has proper left padding
+    gap: 10,
     paddingVertical: 2,
   },
   filterChip: {
-    paddingVertical: 7,
-    paddingHorizontal: 15,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
     borderRadius: 9999,
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterChipSelected: {
     backgroundColor: COLORS.obsidian,
     borderColor: COLORS.obsidian,
   },
   filterChipText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
-    color: COLORS.charcoal,
+    color: '#374151',
   },
   filterChipTextSelected: {
     color: '#FFFFFF',
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.dangerLight,
-    borderWidth: 1,
-    borderColor: COLORS.dangerBorder,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 12,
-  },
-  errorText: {
-    color: COLORS.danger,
-    fontSize: 13,
-    fontWeight: '500',
-    flex: 1,
   },
   columnWrapper: {
     gap: 14,
@@ -334,43 +338,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
-    marginTop: 40,
+    marginTop: 30,
   },
   emptyIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: COLORS.cardMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     color: COLORS.obsidian,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 13.5,
+    fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
-    marginTop: 6,
-    marginBottom: 20,
+    marginTop: 8,
+    marginBottom: 24,
   },
   emptyAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: COLORS.obsidian,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     borderRadius: 9999,
+    minHeight: 48,
   },
   emptyAddBtnText: {
     color: '#FFFFFF',
-    fontSize: 13.5,
+    fontSize: 14.5,
     fontWeight: '700',
   },
 });

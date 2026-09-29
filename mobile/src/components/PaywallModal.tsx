@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Check, Sparkles, Shield, Zap } from 'lucide-react-native';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Button } from './Button';
@@ -19,13 +21,14 @@ interface PaywallModalProps {
 
 export function PaywallModal({ visible, onClose }: PaywallModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<'annual' | 'monthly'>('annual');
+  const insets = useSafeAreaInsets();
 
   const handleStartTrial = () => {
-    // In v1, there is no in-app billing configured on server.js yet (mock confirmation)
-    alert(
-      'Payment Sandbox: In v1, Pro billing is simulated. Once Pro is enabled on your account in backend, you have unlimited items!'
+    Alert.alert(
+      'PairFit Pro — Coming Soon',
+      'In-app Pro subscriptions are rolling out soon! As an early member, you will receive exclusive priority access to unlimited wardrobe pairing.',
+      [{ text: 'Got it', onPress: onClose }]
     );
-    onClose();
   };
 
   return (
@@ -33,11 +36,12 @@ export function PaywallModal({ visible, onClose }: PaywallModalProps) {
       visible={visible}
       animationType="slide"
       transparent
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <X size={20} color={COLORS.obsidian} />
           </TouchableOpacity>
 

@@ -8,17 +8,19 @@ import {
   Image,
   ScrollView,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, Image as ImageIcon, X, Sparkles } from 'lucide-react-native';
-import { COLORS, SHADOWS } from '../constants/theme';
+import { COLORS } from '../constants/theme';
 import { CATEGORY_GROUPS_MAP, CategoryValue } from '../types';
 import { Button } from './Button';
+import { ErrorBanner } from './ErrorBanner';
 import { uploadItemApi, ApiError } from '../api/client';
+import { getUserFriendlyErrorMessage } from '../utils/errors';
 
 interface AddItemModalProps {
   visible: boolean;
@@ -30,9 +32,19 @@ interface AddItemModalProps {
 export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItemModalProps) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<CategoryValue>('tshirt');
+  const [category, setCategory] = useState<CategoryValue | null>(null); // C2: No default category preselected
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const insets = useSafeAreaInsets();
+
+  const handleClose = () => {
+    setErrorMessage('');
+    setPhotoUri(null);
+    setName('');
+    setCategory(null);
+    onClose();
+  };
 
   const pickImage = async (useCamera: boolean) => {
     setErrorMessage('');
@@ -69,13 +81,18 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
         setPhotoUri(result.assets[0].uri);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Could not load photo');
+      setErrorMessage(getUserFriendlyErrorMessage(err, 'Pick Image'));
     }
   };
 
   const handleUpload = async () => {
     if (!photoUri) {
-      setErrorMessage('Please select or capture a clothing photo first.');
+      setErrorMessage('Please select or snap a clothing photo first.');
+      return;
+    }
+
+    if (!category) {
+      setErrorMessage('Please select a clothing category.');
       return;
     }
 
@@ -89,10 +106,10 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
         category,
       });
 
-      // Reset and close
+      // Reset and notify success
       setPhotoUri(null);
       setName('');
-      setCategory('tshirt');
+      setCategory(null);
       setIsUploading(false);
       onSuccess();
       onClose();
@@ -102,39 +119,47 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
         onClose();
         onUpgrade();
       } else {
-        setErrorMessage(err.message || 'Upload failed. Please try again.');
+        setErrorMessage(getUserFriendlyErrorMessage(err, 'Upload Item'));
       }
     }
   };
+
+  const isFormValid = Boolean(photoUri && category);
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
       transparent
-      onRequestClose={onClose}
+      statusBarTranslucent={true} // B3: Overlay covers status bar completely
+      onRequestClose={handleClose}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalOverlay}
       >
-        <View style={styles.sheetContainer}>
-          {/* Header */}
+        <View style={[styles.sheetContainer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+          {/* Fixed Sticky Header */}
           <View style={styles.header}>
-            <View>
+            <View style={styles.headerTextWrap}>
               <Text style={styles.title}>Add to Closet</Text>
               <Text style={styles.subtitle}>Upload your piece to get color matches</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity
+              onPress={handleClose}
+              style={styles.closeButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <X size={20} color={COLORS.obsidian} />
             </TouchableOpacity>
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}
           >
-            {/* Photo Selection / Preview */}
+            {/* Photo Selection / Preview at the very top */}
             {photoUri ? (
               <View style={styles.previewContainer}>
                 <Image source={{ uri: photoUri }} style={styles.previewImage} />
@@ -152,17 +177,19 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
                   <TouchableOpacity
                     style={styles.pickerButton}
                     onPress={() => pickImage(true)}
+                    activeOpacity={0.8}
                   >
-                    <Camera size={22} color={COLORS.obsidian} />
+                    <Camera size={20} color={COLORS.obsidian} />
                     <Text style={styles.pickerButtonText}>Take Photo</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.pickerButton}
                     onPress={() => pickImage(false)}
+                    activeOpacity={0.8}
                   >
-                    <ImageIcon size={22} color={COLORS.obsidian} />
-                    <Text style={styles.pickerButtonText}>Choose from Gallery</Text>
+                    <ImageIcon size={20} color={COLORS.obsidian} />
+                    <Text style={styles.pickerButtonText}>Gallery</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -183,7 +210,12 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
 
             {/* Category Selection */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Select Clothing Category</Text>
+              <View style={styles.categoryHeaderRow}>
+                <Text style={styles.inputLabel}>Select Clothing Category</Text>
+                {!category && (
+                  <Text style={styles.requiredNotice}>(Required)</Text>
+                )}
+              </View>
               {Object.entries(CATEGORY_GROUPS_MAP).map(([groupKey, group]) => (
                 <View key={groupKey} style={styles.categorySection}>
                   <Text style={styles.categoryGroupTitle}>{group.title}</Text>
@@ -193,6 +225,7 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
                       return (
                         <TouchableOpacity
                           key={c.value}
+                          activeOpacity={0.8}
                           onPress={() => setCategory(c.value)}
                           style={[
                             styles.chip,
@@ -215,27 +248,36 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
               ))}
             </View>
 
-            {/* Error Message */}
+            {/* Error Message with user-friendly formatting */}
             {errorMessage ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
+              <ErrorBanner
+                error={errorMessage}
+                onDismiss={() => setErrorMessage('')}
+              />
             ) : null}
 
-            {/* Sharp extraction notice */}
+            {/* User-facing color detection copy (C1: No developer jargon) */}
             <View style={styles.infoNotice}>
-              <Sparkles size={14} color={COLORS.accent} />
+              <Sparkles size={16} color={COLORS.accent} />
               <Text style={styles.infoNoticeText}>
-                Dominant color is automatically extracted with Sharp server-side.
+                We'll automatically detect your piece's main color.
               </Text>
             </View>
 
-            {/* Submit Button */}
+            {/* Submit Button (C2: Disabled until both photo & category are selected) */}
             <Button
-              title={isUploading ? 'Analyzing & Uploading…' : 'Add to Closet'}
+              title={
+                isUploading
+                  ? 'Analyzing & Uploading…'
+                  : !photoUri
+                  ? 'Pick a Photo First'
+                  : !category
+                  ? 'Select a Category'
+                  : 'Add to Closet'
+              }
               onPress={handleUpload}
               loading={isUploading}
-              disabled={!photoUri || isUploading}
+              disabled={!isFormValid || isUploading}
               size="lg"
               style={styles.submitButton}
             />
@@ -249,25 +291,30 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)', // B3: Solid dark backdrop covering everything
     justifyContent: 'flex-end',
   },
   sheetContainer: {
-    backgroundColor: COLORS.card,
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: '90%',
-    paddingBottom: 24,
+    maxHeight: '92%',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderLight,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+  headerTextWrap: {
+    flex: 1,
   },
   title: {
     fontSize: 20,
@@ -280,9 +327,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: COLORS.cardMuted,
     alignItems: 'center',
     justifyContent: 'center',
@@ -295,20 +342,21 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: COLORS.border,
     borderRadius: 20,
-    padding: 24,
+    padding: 20,
     alignItems: 'center',
     backgroundColor: COLORS.canvas,
     marginBottom: 20,
   },
   pickerHint: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '600',
     color: COLORS.charcoal,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   pickerRow: {
     flexDirection: 'row',
     gap: 12,
+    width: '100%',
   },
   pickerButton: {
     flex: 1,
@@ -317,11 +365,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: COLORS.card,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
     borderRadius: 9999,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 44, // 44dp tap target
   },
   pickerButtonText: {
     fontSize: 13,
@@ -339,25 +388,38 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cardMuted,
   },
   retakeButton: {
-    marginTop: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    marginTop: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
     backgroundColor: COLORS.cardMuted,
     borderRadius: 9999,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   retakeText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
     color: COLORS.obsidian,
   },
   inputGroup: {
     marginBottom: 20,
   },
+  categoryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
   inputLabel: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '700',
     color: COLORS.obsidian,
-    marginBottom: 8,
+  },
+  requiredNotice: {
+    fontSize: 12,
+    color: COLORS.danger,
+    fontWeight: '600',
   },
   textInput: {
     backgroundColor: COLORS.canvas,
@@ -366,7 +428,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 14,
+    fontSize: 14.5,
     color: COLORS.obsidian,
   },
   categorySection: {
@@ -375,10 +437,11 @@ const styles = StyleSheet.create({
   categoryGroupTitle: {
     fontSize: 11,
     fontWeight: '700',
-    color: COLORS.textSecondary,
+    color: '#6B7280',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
+    letterSpacing: 0.6,
+    marginBottom: 8,
+    marginTop: 4,
   },
   chipGrid: {
     flexDirection: 'row',
@@ -386,55 +449,48 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 15,
     borderRadius: 9999,
     backgroundColor: COLORS.canvas,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 42, // Tap target
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipSelected: {
     backgroundColor: COLORS.obsidian,
     borderColor: COLORS.obsidian,
   },
   chipText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
-    color: COLORS.charcoal,
+    color: '#374151',
   },
   chipTextSelected: {
     color: '#FFFFFF',
   },
-  errorBox: {
-    backgroundColor: COLORS.dangerLight,
-    borderWidth: 1,
-    borderColor: COLORS.dangerBorder,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: COLORS.danger,
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
   infoNotice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 14,
+    padding: 12,
     marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
   },
   infoNoticeText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#1E40AF',
     flex: 1,
     fontWeight: '500',
+    lineHeight: 18,
   },
   submitButton: {
     marginTop: 4,
+    minHeight: 50,
   },
 });

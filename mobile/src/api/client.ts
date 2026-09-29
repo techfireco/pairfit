@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getSupabase } from '../lib/supabase';
 import { API_BASE_URL } from './config';
 import { Item, MeResponse, RecommendationResponse } from '../types';
@@ -69,40 +71,61 @@ export async function uploadItemApi(params: {
 }): Promise<Item> {
   const sb = await getSupabase();
   const { data: { session } } = await sb.auth.getSession();
+  const url = `${API_BASE_URL.replace(/\/+$/, '')}/api/items`;
 
+  if (Platform.OS !== 'web') {
+    const uploadResult = await FileSystem.uploadAsync(url, params.photoUri, {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: 'photo',
+      parameters: {
+        name: params.name || 'Untitled',
+        category: params.category,
+      },
+      headers: {
+        ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+    });
+
+    let data: any = {};
+    try {
+      data = JSON.parse(uploadResult.body);
+    } catch {
+      data = {};
+    }
+
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      const errorMsg = data.error || `Upload failed with status ${uploadResult.status}`;
+      const isUpgrade = Boolean(data.upgrade || uploadResult.status === 402);
+      throw new ApiError(errorMsg, uploadResult.status, isUpgrade);
+    }
+
+    return data as Item;
+  }
+
+  // Fallback for Web browser runtime
   const formData = new FormData();
   formData.append('name', params.name || 'Untitled');
   formData.append('category', params.category);
 
-  // React Native file upload object
-  const filename = params.photoUri.split('/').pop() || 'photo.jpg';
-  const match = /\.(\w+)$/.exec(filename);
-  const type = match ? `image/${match[1].toLowerCase()}` : 'image/jpeg';
+  const res = await fetch(params.photoUri);
+  const blob = await res.blob();
+  formData.append('photo', blob, 'photo.jpg');
 
-  // @ts-ignore: React Native FormData file signature
-  formData.append('photo', {
-    uri: params.photoUri,
-    name: filename,
-    type,
-  });
-
-  const url = `${API_BASE_URL.replace(/\/+$/, '')}/api/items`;
-
-  const res = await fetch(url, {
+  const webRes = await fetch(url, {
     method: 'POST',
     headers: {
       ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      // Note: do not set Content-Type manually for multipart/form-data so boundaries are preserved
     },
     body: formData,
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = await webRes.json().catch(() => ({}));
 
-  if (!res.ok) {
-    const errorMsg = data.error || `Upload failed with status ${res.status}`;
-    const isUpgrade = Boolean(data.upgrade || res.status === 402);
-    throw new ApiError(errorMsg, res.status, isUpgrade);
+  if (!webRes.ok) {
+    const errorMsg = data.error || `Upload failed with status ${webRes.status}`;
+    const isUpgrade = Boolean(data.upgrade || webRes.status === 402);
+    throw new ApiError(errorMsg, webRes.status, isUpgrade);
   }
 
   return data as Item;

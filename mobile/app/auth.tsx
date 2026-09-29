@@ -5,16 +5,17 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { COLORS } from '../src/constants/theme';
 import { Button } from '../src/components/Button';
-import { Eye, EyeOff, Mail, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react-native';
+import { ErrorBanner } from '../src/components/ErrorBanner';
+import { Eye, EyeOff, Mail, Lock, User, CheckCircle2 } from 'lucide-react-native';
 
 export default function AuthScreen() {
   const [tab, setTab] = useState<'login' | 'register'>('login');
@@ -125,10 +126,10 @@ export default function AuthScreen() {
 
           {/* Status Banners */}
           {errorMessage ? (
-            <View style={styles.errorBanner}>
-              <AlertCircle size={16} color={COLORS.danger} />
-              <Text style={styles.errorBannerText}>{errorMessage}</Text>
-            </View>
+            <ErrorBanner
+              error={errorMessage}
+              onDismiss={() => setErrorMessage('')}
+            />
           ) : null}
 
           {infoMessage ? (

@@ -6,18 +6,19 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Item, Recommendation, CATEGORY_LABELS } from '../../src/types';
 import { fetchItems, fetchRecommendationsApi } from '../../src/api/client';
 import { COLORS, SHADOWS } from '../../src/constants/theme';
 import { MatchCard } from '../../src/components/MatchCard';
 import { Badge } from '../../src/components/Badge';
 import { ColorSwatch } from '../../src/components/ColorSwatch';
+import { ErrorBanner } from '../../src/components/ErrorBanner';
 import { Sparkles, Layers, ArrowRight, Shirt } from 'lucide-react-native';
 
 export default function StyleThisScreen() {
@@ -27,10 +28,11 @@ export default function StyleThisScreen() {
   const [isLoadingCloset, setIsLoadingCloset] = useState(true);
   const [isLoadingRecs, setIsLoadingRecs] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<any>(null);
 
   const params = useLocalSearchParams<{ preselectId?: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const loadCloset = useCallback(async () => {
     try {
@@ -38,7 +40,6 @@ export default function StyleThisScreen() {
       setCloset(data);
 
       if (data.length > 0) {
-        // If preselectId passed, select it; otherwise default to first item
         const target = params.preselectId
           ? data.find((i) => i.id === params.preselectId) || data[0]
           : data[0];
@@ -47,7 +48,7 @@ export default function StyleThisScreen() {
         setSelectedItem(null);
       }
     } catch (err: any) {
-      setError(err.message || 'Could not load your closet.');
+      setError(err);
     } finally {
       setIsLoadingCloset(false);
       setRefreshing(false);
@@ -65,7 +66,7 @@ export default function StyleThisScreen() {
       const res = await fetchRecommendationsApi(item.id);
       setRecommendations(res.recommendations);
     } catch (err: any) {
-      setError(err.message || 'Could not fetch recommendations.');
+      setError(err);
       setRecommendations([]);
     } finally {
       setIsLoadingRecs(false);
@@ -92,21 +93,21 @@ export default function StyleThisScreen() {
 
   if (isLoadingCloset) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.obsidian} />
-          <Text style={styles.loadingText}>Loading wardrobe styling…</Text>
+          <Text style={styles.loadingText}>Opening wardrobe styling…</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (closet.length === 0) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIconWrap}>
-            <Shirt size={36} color={COLORS.textSecondary} />
+            <Shirt size={36} color={COLORS.obsidian} />
           </View>
           <Text style={styles.emptyTitle}>Add clothes to style outfits</Text>
           <Text style={styles.emptySubtitle}>
@@ -115,12 +116,13 @@ export default function StyleThisScreen() {
           <TouchableOpacity
             style={[styles.emptyBtn, SHADOWS.button]}
             onPress={() => router.push('/(tabs)/closet')}
+            activeOpacity={0.85}
           >
             <Text style={styles.emptyBtnText}>Go to My Closet</Text>
             <ArrowRight size={16} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -129,7 +131,7 @@ export default function StyleThisScreen() {
     : '';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
@@ -143,45 +145,45 @@ export default function StyleThisScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>Style This</Text>
-            <Text style={styles.subtitle}>Pick any item to see color-ranked matches</Text>
-          </View>
+          <Text style={styles.title}>Style This</Text>
+          <Text style={styles.subtitle}>Pick any item to see color-ranked matches</Text>
         </View>
 
-        {/* Horizontal Closet Item Selector */}
+        {/* Horizontal Closet Item Selector - breaks out edge-to-edge */}
         <View style={styles.selectorSection}>
           <Text style={styles.sectionLabel}>Select Anchor Piece</Text>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={closet}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.selectorList}
-            renderItem={({ item }) => {
-              const isSelected = selectedItem?.id === item.id;
-              return (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => handleSelectItem(item)}
-                  style={[
-                    styles.anchorThumbCard,
-                    isSelected && styles.anchorThumbCardSelected,
-                  ]}
-                >
-                  <Image source={{ uri: item.photoUrl }} style={styles.thumbImage} />
-                  <Text style={styles.thumbName} numberOfLines={1}>
-                    {item.name || 'Piece'}
-                  </Text>
-                  {isSelected && (
-                    <View style={styles.selectedDot}>
-                      <View style={styles.selectedDotInner} />
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            }}
-          />
+          <View style={styles.horizontalScrollWrap}>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={closet}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.selectorList}
+              renderItem={({ item }) => {
+                const isSelected = selectedItem?.id === item.id;
+                return (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleSelectItem(item)}
+                    style={[
+                      styles.anchorThumbCard,
+                      isSelected && styles.anchorThumbCardSelected,
+                    ]}
+                  >
+                    <Image source={{ uri: item.photoUrl }} style={styles.thumbImage} />
+                    <Text style={styles.thumbName} numberOfLines={1}>
+                      {item.name || 'Piece'}
+                    </Text>
+                    {isSelected && (
+                      <View style={styles.selectedDot}>
+                        <View style={styles.selectedDotInner} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
         </View>
 
         {/* Selected Anchor Hero Card */}
@@ -198,7 +200,7 @@ export default function StyleThisScreen() {
                 </View>
 
                 <Text style={styles.heroTitle} numberOfLines={2}>
-                  {selectedItem.name || 'Untitled Item'}
+                  {selectedItem.name || 'Untitled Piece'}
                 </Text>
 
                 <View style={styles.heroMetaRow}>
@@ -208,6 +210,15 @@ export default function StyleThisScreen() {
               </View>
             </View>
           </View>
+        )}
+
+        {/* Error Notification with user-friendly formatting & Retry */}
+        {error && (
+          <ErrorBanner
+            error={error}
+            onRetry={() => selectedItem && loadRecommendations(selectedItem)}
+            onDismiss={() => setError(null)}
+          />
         )}
 
         {/* Recommendations Section */}
@@ -226,14 +237,10 @@ export default function StyleThisScreen() {
               <ActivityIndicator size="small" color={COLORS.obsidian} />
               <Text style={styles.recsLoadingText}>Finding best matches…</Text>
             </View>
-          ) : error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : recommendations.length === 0 ? (
+          ) : recommendations.length === 0 && !error ? (
             <View style={styles.noMatchesBox}>
               <View style={styles.noMatchesIcon}>
-                <Layers size={24} color={COLORS.textSecondary} />
+                <Layers size={24} color={COLORS.obsidian} />
               </View>
               <Text style={styles.noMatchesTitle}>No matching items yet</Text>
               <Text style={styles.noMatchesText}>
@@ -242,6 +249,7 @@ export default function StyleThisScreen() {
               <TouchableOpacity
                 style={styles.addMoreBtn}
                 onPress={() => router.push('/(tabs)/closet')}
+                activeOpacity={0.8}
               >
                 <Text style={styles.addMoreBtnText}>Add More Clothes</Text>
               </TouchableOpacity>
@@ -253,18 +261,17 @@ export default function StyleThisScreen() {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screen: {
     flex: 1,
     backgroundColor: COLORS.canvas,
   },
   container: {
-    paddingHorizontal: 18,
-    paddingTop: 12,
+    paddingHorizontal: 20,
     paddingBottom: 32,
   },
   centerContainer: {
@@ -275,21 +282,22 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: '#4B5563',
     fontWeight: '500',
   },
   header: {
     marginBottom: 16,
+    paddingRight: 48,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: COLORS.obsidian,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    fontSize: 13.5,
+    color: '#4B5563',
     marginTop: 2,
   },
   selectorSection: {
@@ -298,17 +306,21 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.obsidian,
+    color: '#374151',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 10,
   },
+  horizontalScrollWrap: {
+    marginHorizontal: -20,
+  },
   selectorList: {
+    paddingHorizontal: 20,
     gap: 10,
     paddingVertical: 4,
   },
   anchorThumbCard: {
-    width: 82,
+    width: 84,
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 6,
@@ -316,14 +328,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.borderLight,
     position: 'relative',
+    minHeight: 104,
   },
   anchorThumbCardSelected: {
     borderColor: COLORS.obsidian,
     backgroundColor: '#FFFFFF',
   },
   thumbImage: {
-    width: 70,
-    height: 70,
+    width: 72,
+    height: 72,
     borderRadius: 12,
     backgroundColor: COLORS.cardMuted,
     marginBottom: 6,
@@ -423,7 +436,7 @@ const styles = StyleSheet.create({
   resultsCount: {
     fontSize: 12.5,
     fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: '#4B5563',
   },
   recsLoadingBox: {
     paddingVertical: 40,
@@ -433,20 +446,8 @@ const styles = StyleSheet.create({
   },
   recsLoadingText: {
     fontSize: 13.5,
-    color: COLORS.textSecondary,
+    color: '#4B5563',
     fontWeight: '500',
-  },
-  errorBox: {
-    padding: 14,
-    backgroundColor: COLORS.dangerLight,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.dangerBorder,
-  },
-  errorText: {
-    color: COLORS.danger,
-    fontSize: 13,
-    textAlign: 'center',
   },
   noMatchesBox: {
     backgroundColor: COLORS.card,
@@ -473,7 +474,7 @@ const styles = StyleSheet.create({
   },
   noMatchesText: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: '#4B5563',
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 16,
@@ -483,6 +484,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 9999,
     backgroundColor: COLORS.obsidian,
+    minHeight: 42,
+    justifyContent: 'center',
   },
   addMoreBtnText: {
     color: '#FFFFFF',
@@ -511,8 +514,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 13.5,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: '#4B5563',
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 8,
@@ -526,6 +529,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 9999,
+    minHeight: 48,
   },
   emptyBtnText: {
     color: '#FFFFFF',
