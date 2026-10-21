@@ -50,6 +50,13 @@ export async function fetchMe(): Promise<MeResponse> {
   return apiRequest<MeResponse>('/api/me');
 }
 
+// Permanently deletes the signed-in user's account, photos and wardrobe on the server.
+export async function deleteAccountApi(): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/me', {
+    method: 'DELETE',
+  });
+}
+
 export async function fetchItems(): Promise<Item[]> {
   return apiRequest<Item[]>('/api/items');
 }

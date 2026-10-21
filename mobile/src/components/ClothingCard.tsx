@@ -1,116 +1,116 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Image } from 'expo-image';
-import { Item, CATEGORY_LABELS } from '../types';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { Badge } from './Badge';
-import { ColorSwatch } from './ColorSwatch';
 import { Trash2 } from 'lucide-react-native';
+import { Item, CATEGORY_LABELS } from '../types';
+import { useTheme, useThemedStyles, Theme, TYPE, RADIUS, SPACING, MAX_FONT_SCALE } from '../theme';
+import { ColorSwatch } from './ColorSwatch';
+import { getColorName } from '../utils/colorTheory';
+import { haptics } from '../utils/haptics';
 
 interface ClothingCardProps {
   item: Item;
+  index?: number;
   onPress?: () => void;
   onDelete: (id: string) => Promise<void>;
   isDeleting?: boolean;
 }
 
-function ClothingCardComponent({ item, onPress, onDelete, isDeleting = false }: ClothingCardProps) {
+const DELETE_ARM_MS = 4000;
+// Controls drawn over the photo sit on a dark scrim in both themes.
+const ON_PHOTO = '#F4F1EA';
+const STAGGER_MS = 40;
+const MAX_STAGGERED = 8;
+
+function ClothingCardComponent({ item, index = 0, onPress, onDelete, isDeleting = false }: ClothingCardProps) {
+  const { colors } = useTheme().theme;
+  const styles = useThemedStyles(makeStyles);
   const [isArmed, setIsArmed] = useState(false);
   const armTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
-      if (armTimeoutRef.current) {
-        clearTimeout(armTimeoutRef.current);
-      }
+      if (armTimeoutRef.current) clearTimeout(armTimeoutRef.current);
     };
   }, []);
 
+  // Two-tap delete: the first tap arms the button (auto-disarms after 4s).
   const handleDeletePress = async () => {
     if (!isArmed) {
+      haptics.warning();
       setIsArmed(true);
-      armTimeoutRef.current = setTimeout(() => {
-        setIsArmed(false);
-      }, 4000);
+      armTimeoutRef.current = setTimeout(() => setIsArmed(false), DELETE_ARM_MS);
       return;
     }
-
-    // Second tap: execute delete
-    if (armTimeoutRef.current) {
-      clearTimeout(armTimeoutRef.current);
-    }
+    if (armTimeoutRef.current) clearTimeout(armTimeoutRef.current);
     setIsArmed(false);
     await onDelete(item.id);
   };
 
+  const name = item.name || 'Untitled piece';
   const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
+  const colorName = getColorName(item.h, item.s, item.l, item.colorHex);
 
   return (
-    <View style={[styles.card, SHADOWS.card]}>
-      <TouchableOpacity
-        activeOpacity={onPress ? 0.85 : 1}
-        onPress={onPress}
-        style={[
-          styles.imageContainer,
-          item.colorHex ? { backgroundColor: `${item.colorHex}18` } : null,
-        ]}
-      >
-        <Image
-          source={{ uri: item.thumbnailUrl || item.photoUrl }}
-          style={styles.image}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={150}
-          recyclingKey={item.id}
-        />
-        <View style={styles.categoryBadgeOverlay}>
-          <Badge label={categoryLabel} variant="category" />
-        </View>
-      </TouchableOpacity>
-
-      <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={1}>
-          {item.name || 'Untitled Piece'}
-        </Text>
-
-        <View style={styles.metaRow}>
-          <ColorSwatch hex={item.colorHex} size={14} showHex />
-        </View>
-
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={handleDeletePress}
-          disabled={isDeleting}
-          style={[
-            styles.deleteButton,
-            isArmed && styles.deleteButtonArmed,
+    <Animated.View
+      entering={FadeInDown.duration(320).delay(Math.min(index, MAX_STAGGERED) * STAGGER_MS)}
+      style={styles.card}
+    >
+      {/* Photo and remove button are siblings: nested buttons confuse screen readers. */}
+      <View style={styles.tileWrap}>
+        <Pressable
+          onPress={onPress}
+          disabled={!onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Style ${name}`}
+          accessibilityHint="Shows the pieces that go with it"
+          style={({ pressed }) => [
+            styles.tile,
+            item.colorHex ? { backgroundColor: `${item.colorHex}26` } : null,
+            pressed && styles.tilePressed,
           ]}
         >
+          <Image
+            source={{ uri: item.thumbnailUrl || item.photoUrl }}
+            style={styles.image}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={150}
+            recyclingKey={item.id}
+            accessibilityIgnoresInvertColors
+          />
+          <View style={styles.categoryPill}>
+            <Text style={styles.categoryText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {categoryLabel}
+            </Text>
+          </View>
+        </Pressable>
+        <Pressable
+          onPress={handleDeletePress}
+          disabled={isDeleting}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={isArmed ? `Confirm removing ${name}` : `Remove ${name}`}
+          style={[styles.deleteButton, isArmed && styles.deleteButtonArmed]}
+        >
           {isDeleting ? (
-            <ActivityIndicator size="small" color={COLORS.danger} />
+            <ActivityIndicator size="small" color={ON_PHOTO} />
+          ) : isArmed ? (
+            <Text style={styles.confirmText}>Confirm</Text>
           ) : (
-            <>
-              {!isArmed && <Trash2 size={13} color={COLORS.textSecondary} />}
-              <Text
-                style={[
-                  styles.deleteText,
-                  isArmed && styles.deleteTextArmed,
-                ]}
-                numberOfLines={1}
-              >
-                {isArmed ? 'Tap again to confirm remove' : 'Remove'}
-              </Text>
-            </>
+            <Trash2 size={15} color={ON_PHOTO} />
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
-    </View>
+
+      <View style={styles.body}>
+        <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {name}
+        </Text>
+        <ColorSwatch hex={item.colorHex} size={10} label={colorName} style={styles.swatch} />
+      </View>
+    </Animated.View>
   );
 }
 
@@ -121,74 +121,86 @@ export const ClothingCard = memo(ClothingCardComponent, (prev, next) => {
     prev.item.name === next.item.name &&
     prev.item.category === next.item.category &&
     prev.item.colorHex === next.item.colorHex &&
-    prev.isDeleting === next.isDeleting
+    prev.isDeleting === next.isDeleting &&
+    prev.onPress === next.onPress
   );
 });
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    marginBottom: 16,
-    flex: 1,
-  },
-  imageContainer: {
-    width: '100%',
-    aspectRatio: 1,
-    backgroundColor: COLORS.cardMuted,
-    position: 'relative',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  categoryBadgeOverlay: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-  },
-  body: {
-    padding: 12,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.obsidian,
-    marginBottom: 6,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 9999,
-    backgroundColor: COLORS.cardMuted,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 38,
-  },
-  deleteButtonArmed: {
-    backgroundColor: COLORS.dangerLight,
-    borderColor: COLORS.dangerBorder,
-  },
-  deleteText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  deleteTextArmed: {
-    color: COLORS.danger,
-    fontSize: 11,
-  },
-});
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
+    card: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.lg + 2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      marginBottom: SPACING.md + 2,
+    },
+    tileWrap: {
+      width: '100%',
+      aspectRatio: 1,
+    },
+    tile: {
+      flex: 1,
+      backgroundColor: colors.surfaceRaised,
+    },
+    tilePressed: {
+      opacity: 0.85,
+    },
+    image: {
+      width: '100%',
+      height: '100%',
+    },
+    categoryPill: {
+      position: 'absolute',
+      left: SPACING.sm,
+      bottom: SPACING.sm,
+      backgroundColor: colors.overlay,
+      borderRadius: RADIUS.pill,
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+    },
+    categoryText: {
+      ...TYPE.caption,
+      fontSize: 11,
+      lineHeight: 14,
+      color: ON_PHOTO,
+    },
+    body: {
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.sm + 2,
+      paddingBottom: SPACING.md,
+    },
+    title: {
+      ...TYPE.subheading,
+      fontSize: 15,
+      color: colors.text,
+    },
+    swatch: {
+      marginTop: 6,
+    },
+    deleteButton: {
+      position: 'absolute',
+      top: SPACING.sm,
+      right: SPACING.sm,
+      minWidth: 32,
+      height: 32,
+      borderRadius: RADIUS.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 6,
+      backgroundColor: colors.overlay,
+    },
+    deleteButtonArmed: {
+      backgroundColor: colors.dangerSoft,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      paddingHorizontal: 10,
+    },
+    confirmText: {
+      ...TYPE.caption,
+      fontSize: 12,
+      color: colors.dangerText,
+    },
+  });

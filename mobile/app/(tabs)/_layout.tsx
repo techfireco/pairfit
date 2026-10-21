@@ -2,30 +2,37 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Shirt, Sparkles, User } from 'lucide-react-native';
-import { COLORS } from '../../src/constants/theme';
+import { useTheme, FONTS } from '../../src/theme';
+import { haptics } from '../../src/utils/haptics';
+
+const TAB_BAR_HEIGHT = 64;
+const MIN_BOTTOM_INSET = 12;
 
 export default function TabLayout() {
+  const { colors } = useTheme().theme;
   const insets = useSafeAreaInsets();
-  const bottomInset = Math.max(insets.bottom, 12);
+  const bottomInset = Math.max(insets.bottom, MIN_BOTTOM_INSET);
 
   return (
     <Tabs
+      screenListeners={{ tabPress: () => haptics.selection() }}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: COLORS.obsidian,
-        tabBarInactiveTintColor: '#4B5563', // Darkened for 4.5:1 accessible contrast
+        tabBarActiveTintColor: colors.accentText,
+        tabBarInactiveTintColor: colors.textMuted,
+        sceneStyle: { backgroundColor: colors.canvas },
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: colors.tabBar,
           borderTopWidth: 1,
-          borderTopColor: COLORS.borderLight,
+          borderTopColor: colors.border,
           elevation: 0,
-          height: 54 + bottomInset,
+          height: TAB_BAR_HEIGHT + bottomInset,
           paddingBottom: bottomInset,
-          paddingTop: 8,
+          paddingTop: 6,
         },
         tabBarLabelStyle: {
-          fontSize: 11.5,
-          fontWeight: '600',
+          fontFamily: FONTS.bodySemiBold,
+          fontSize: 11,
           marginTop: 2,
         },
       }}
@@ -33,14 +40,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="closet"
         options={{
-          title: 'My Closet',
+          title: 'Closet',
           tabBarIcon: ({ color, size }) => <Shirt size={size - 2} color={color} />,
         }}
       />
       <Tabs.Screen
         name="style"
         options={{
-          title: 'Style This',
+          title: 'Style',
           tabBarIcon: ({ color, size }) => <Sparkles size={size - 2} color={color} />,
         }}
       />
@@ -51,19 +58,9 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => <User size={size - 2} color={color} />,
         }}
       />
-      {/* Hide default template screens */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="two"
-        options={{
-          href: null,
-        }}
-      />
+      {/* Template routes kept only as redirects */}
+      <Tabs.Screen name="index" options={{ href: null }} />
+      <Tabs.Screen name="two" options={{ href: null }} />
     </Tabs>
   );
 }

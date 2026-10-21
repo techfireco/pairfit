@@ -1,64 +1,59 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { View, Text, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
+import { useThemedStyles, Theme, TYPE, RADIUS, MAX_FONT_SCALE } from '../theme';
+
+type BadgeVariant = 'category' | 'plan' | 'neutral' | 'harmony';
 
 interface BadgeProps {
   label: string;
-  variant?: 'category' | 'score' | 'plan' | 'neutral' | 'harmony';
-  score?: number;
-  style?: ViewStyle;
-  textStyle?: TextStyle;
+  variant?: BadgeVariant;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
 }
 
-export function Badge({ label, variant = 'category', score, style, textStyle }: BadgeProps) {
-  let backgroundColor = COLORS.cardMuted;
-  let textColor = COLORS.charcoal;
-  let borderColor = 'transparent';
-
-  if (variant === 'score' && typeof score === 'number') {
-    if (score >= 85) {
-      backgroundColor = '#ECFDF5';
-      textColor = COLORS.scoreHigh;
-      borderColor = '#A7F3D0';
-    } else if (score >= 70) {
-      backgroundColor = '#FFFBEB';
-      textColor = COLORS.scoreMedium;
-      borderColor = '#FDE68A';
-    } else {
-      backgroundColor = '#F3F4F6';
-      textColor = COLORS.scoreLow;
-      borderColor = '#E5E7EB';
-    }
-  } else if (variant === 'plan') {
-    backgroundColor = '#F5F3FF';
-    textColor = '#6D28D9';
-    borderColor = '#DDD6FE';
-  } else if (variant === 'harmony') {
-    backgroundColor = '#F0F9FF';
-    textColor = '#0369A1';
-    borderColor = '#BAE6FD';
-  }
+export function Badge({ label, variant = 'category', style, textStyle }: BadgeProps) {
+  const styles = useThemedStyles(makeStyles);
+  const isAccent = variant === 'plan' || variant === 'harmony';
 
   return (
-    <View style={[styles.badge, { backgroundColor, borderColor }, style]}>
-      <Text style={[styles.text, { color: textColor }, textStyle]}>
+    <View style={[styles.badge, isAccent ? styles.accent : styles.quiet, style]}>
+      <Text
+        style={[styles.text, isAccent ? styles.accentText : styles.quietText, textStyle]}
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 9999,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  text: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-});
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
+    badge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: RADIUS.pill,
+      borderWidth: 1,
+      alignSelf: 'flex-start',
+    },
+    quiet: {
+      backgroundColor: colors.surfaceSunken,
+      borderColor: colors.border,
+    },
+    accent: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.accentEdge,
+    },
+    text: {
+      ...TYPE.caption,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    quietText: {
+      color: colors.textSecondary,
+    },
+    accentText: {
+      color: colors.accentText,
+    },
+  });

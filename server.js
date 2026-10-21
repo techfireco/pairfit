@@ -18,6 +18,8 @@ const sharp = require('sharp');
 const path = require('path');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { deleteUserAccount } = require('./lib/accountDeletion');
+const { resolveProxyPath } = require('./lib/supabaseProxy');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,19 +51,21 @@ const supabase = createClient(SB_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 app.use(cors());
 
-// Same-origin reverse proxy for Supabase (auth/rest/storage). The browser
-// must never call the raw http:// Kong URL directly: on an https:// page the
-// browser blocks those calls as mixed content ("Failed to fetch"). The proxy
-// is a dumb pipe — it forwards the caller's own anon key / user JWT, so RLS
-// still applies exactly as if the client called Supabase directly.
+// Same-origin reverse proxy for Supabase. The browser must never call the raw
+// http:// Kong URL directly: on an https:// page the browser blocks those calls
+// as mixed content ("Failed to fetch"). It forwards the caller's own anon key /
+// user JWT, but ONLY for Auth and server-signed photo URLs — the database and
+// storage writes are reachable through the API alone (see lib/supabaseProxy.js).
 // Registered BEFORE express.json() so request bodies stream through untouched.
 app.use(SB_PROXY_PREFIX, (req, res) => {
+  const upstreamPath = resolveProxyPath(req.originalUrl.slice(SB_PROXY_PREFIX.length));
+  if (!upstreamPath) return res.status(404).json({ error: 'Not found' });
   const target = new URL(SB_URL);
   const upstream = http.request(
     {
       hostname: target.hostname,
       port: target.port || 80,
-      path: req.originalUrl.slice(SB_PROXY_PREFIX.length) || '/',
+      path: upstreamPath,
       method: req.method,
       headers: { ...req.headers, host: target.host },
     },
@@ -324,6 +328,17 @@ app.get('/api/me', auth, async (req, res) => {
     itemCount: count,
     itemLimit: profile.is_pro ? null : FREE_ITEM_LIMIT,
   });
+});
+
+// Permanent account deletion: every photo, every wardrobe row, then the auth user.
+app.delete('/api/me', auth, async (req, res) => {
+  try {
+    await deleteUserAccount(supabase, { userId: req.user.id, bucket: BUCKET });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Account deletion failed for user', req.user.id, e);
+    res.status(500).json({ error: 'Could not delete your account. Please try again.' });
+  }
 });
 
 app.get('/api/items', auth, async (req, res) => {

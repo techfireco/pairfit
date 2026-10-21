@@ -36,7 +36,7 @@ The Supabase gateway (Kong) is **HTTP-only**. The Express server reverse-proxies
 
 - `/api/config` returns `supabaseUrl` = `https://<api-host>/sb` (already proxied, already HTTPS).
 - Create the Supabase client with **that URL**: `createClient(config.supabaseUrl, config.supabaseAnonKey)`.
-- Auth, REST, and Storage all work through the proxy (verified in production). The proxy forwards your anon key / user JWT untouched — RLS applies exactly as normal.
+- Only Auth (`/auth/v1/*`) and server-signed photo URLs (`/storage/v1/object/sign/*`) pass through the proxy; everything else returns 404. Clients never read or write the database or storage directly — use the `/api/*` endpoints. The proxy forwards your anon key / user JWT untouched.
 - **Why mobile must use it too:** iOS App Transport Security and Android (API 28+) block cleartext HTTP by default. The `/sb` URL is HTTPS, so no ATS/`usesCleartextTraffic` exceptions are needed.
 - No realtime subscriptions are used — do not add any.
 
@@ -69,6 +69,7 @@ Base: `<API_BASE>`. All `/api/*` (except `/api/config`) require `Authorization: 
 |---|---|---|---|---|
 | GET | `/api/config` | — | `{ supabaseUrl, supabaseAnonKey }` | — |
 | GET | `/api/me` | — | `{ id, email, name, isPro, itemCount, itemLimit }` (`itemLimit` null when Pro) | 401 `{ error: 'Login required' }` / `'Session expired, please login again'` |
+| DELETE | `/api/me` | — | `{ ok: true }` — account, photos and items permanently deleted | 401 · 500 `{ error }` (nothing deleted from auth; safe to retry) |
 | GET | `/api/items` | — | `[ item ]` newest first | 401 |
 | POST | `/api/items` | multipart: `photo` (file, ≤8 MB), `name` (string), `category` (value, required) | `item` (includes server-extracted `colorHex`) | 400 photo/category missing · **402 `{ error, upgrade: true }` when free limit reached** · 401 |
 | DELETE | `/api/items/:id` | — | `{ ok: true }` | 401 · 404 `{ error: 'Item not found' }` |

@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pairfit",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.techfireco.pairfit",
@@ -18,15 +18,19 @@
     "android": {
       "package": "com.techfireco.pairfit",
       "adaptiveIcon": {
-        "backgroundColor": "#FAF9F6",
+        "backgroundColor": "#0D0D0F",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -42,14 +46,20 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#FAF9F6"
+          "backgroundColor": "#0D0D0F",
+          "imageWidth": 160,
+          "dark": {
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#0D0D0F"
+          }
         }
       ],
       [
         "expo-image-picker",
         {
           "photosPermission": "PairFit needs access to your photos to upload wardrobe items.",
-          "cameraPermission": "PairFit needs access to your camera to snap photos of your clothes."
+          "cameraPermission": "PairFit needs access to your camera to snap photos of your clothes.",
+          "microphonePermission": false
         }
       ],
       "expo-image"

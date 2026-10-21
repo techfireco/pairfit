@@ -3,7 +3,8 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
+  TextInputProps,
+  Pressable,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -11,14 +12,21 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Eye, EyeOff, CheckCircle2 } from 'lucide-react-native';
 import { useAuth } from '../src/context/AuthContext';
-import { COLORS } from '../src/constants/theme';
+import { useTheme, useThemedStyles, Theme, TYPE, RADIUS, SPACING, MAX_FONT_SCALE } from '../src/theme';
 import { Button } from '../src/components/Button';
 import { ErrorBanner } from '../src/components/ErrorBanner';
-import { Eye, EyeOff, Mail, Lock, User, CheckCircle2 } from 'lucide-react-native';
+import { Logo } from '../src/components/Logo';
+import { haptics } from '../src/utils/haptics';
+
+type AuthTab = 'login' | 'register';
+const MIN_PASSWORD_LENGTH = 6;
 
 export default function AuthScreen() {
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const { colors } = useTheme().theme;
+  const styles = useThemedStyles(makeStyles);
+  const [tab, setTab] = useState<AuthTab>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,222 +38,155 @@ export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
   const router = useRouter();
 
+  const switchTab = (next: AuthTab) => {
+    if (next !== tab) haptics.selection();
+    setTab(next);
+    setErrorMessage('');
+  };
+
   const handleSubmit = async () => {
     setErrorMessage('');
     setInfoMessage('');
 
     if (!email.trim() || !password) {
-      setErrorMessage('Please enter both email and password.');
+      setErrorMessage('Enter your email and password.');
       return;
     }
-
-    if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters.');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setErrorMessage(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
 
     setIsSubmitting(true);
-
     if (tab === 'login') {
       const res = await signIn(email, password);
       setIsSubmitting(false);
-      if (res.error) {
-        setErrorMessage(res.error);
-      } else {
-        router.replace('/(tabs)/closet');
-      }
-    } else {
-      const res = await signUp(name, email, password);
-      setIsSubmitting(false);
-      if (res.error) {
-        setErrorMessage(res.error);
-      } else if (res.message) {
-        setInfoMessage(res.message);
-        setTab('login');
-      } else {
-        router.replace('/(tabs)/closet');
-      }
+      if (res.error) setErrorMessage(res.error);
+      else router.replace('/(tabs)/closet');
+      return;
     }
-  };
 
-  const handleOAuthPlaceholder = (provider: 'Apple' | 'Google') => {
-    alert(
-      `${provider} Sign-In: In this release, use email & password to sign in. ${provider} OAuth is wired in the backend and ready for production provisioning.`
-    );
+    const res = await signUp(name, email, password);
+    setIsSubmitting(false);
+    if (res.error) {
+      setErrorMessage(res.error);
+    } else if (res.message) {
+      setInfoMessage(res.message);
+      setTab('login');
+    } else {
+      router.replace('/(tabs)/closet');
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardView}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.container}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.brandTitle}>PairFit</Text>
-            <Text style={styles.brandSubtitle}>Personal Wardrobe Stylist</Text>
+          <View style={styles.brand}>
+            <Logo size={44} />
+            <Text style={styles.wordmark} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              PairFit
+            </Text>
+            <Text style={styles.tagline}>Your closet, styled by color.</Text>
           </View>
 
-          {/* Tab Switcher */}
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tabButton, tab === 'login' && styles.tabButtonActive]}
-              onPress={() => {
-                setTab('login');
-                setErrorMessage('');
-              }}
-            >
-              <Text
-                style={[styles.tabButtonText, tab === 'login' && styles.tabButtonTextActive]}
-              >
-                Sign In
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, tab === 'register' && styles.tabButtonActive]}
-              onPress={() => {
-                setTab('register');
-                setErrorMessage('');
-              }}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  tab === 'register' && styles.tabButtonTextActive,
-                ]}
-              >
-                Create Account
-              </Text>
-            </TouchableOpacity>
+          <View style={styles.tabs} accessibilityRole="tablist">
+            {(['login', 'register'] as const).map((key) => {
+              const isActive = tab === key;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => switchTab(key)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: isActive }}
+                  style={[styles.tab, isActive && styles.tabActive]}
+                >
+                  <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                    {key === 'login' ? 'Sign in' : 'Create account'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
-          {/* Status Banners */}
-          {errorMessage ? (
-            <ErrorBanner
-              error={errorMessage}
-              onDismiss={() => setErrorMessage('')}
-            />
-          ) : null}
-
+          {errorMessage ? <ErrorBanner error={errorMessage} onDismiss={() => setErrorMessage('')} /> : null}
           {infoMessage ? (
-            <View style={styles.infoBanner}>
-              <CheckCircle2 size={16} color="#059669" />
-              <Text style={styles.infoBannerText}>{infoMessage}</Text>
+            <View style={styles.infoBanner} accessibilityRole="alert">
+              <CheckCircle2 size={16} color={colors.success} />
+              <Text style={styles.infoText}>{infoMessage}</Text>
             </View>
           ) : null}
 
-          {/* Form */}
           <View style={styles.form}>
             {tab === 'register' && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Full Name</Text>
-                <View style={styles.inputWrap}>
-                  <User size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Alex Morgan"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={name}
-                    onChangeText={setName}
-                    autoCapitalize="words"
-                  />
-                </View>
-              </View>
+              <Field
+                label="Name"
+                styles={styles}
+                placeholder="Alex Morgan"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                autoComplete="name"
+                textContentType="name"
+              />
             )}
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Email Address</Text>
-              <View style={styles.inputWrap}>
-                <Mail size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="your.email@example.com"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Password</Text>
-              <View style={styles.inputWrap}>
-                <Lock size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { paddingRight: 40 }]}
-                  placeholder="••••••••"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                />
-                <TouchableOpacity
-                  style={styles.eyeBtn}
-                  onPress={() => setShowPassword(!showPassword)}
+            <Field
+              label="Email"
+              styles={styles}
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              textContentType="emailAddress"
+            />
+            <Field
+              label="Password"
+              styles={styles}
+              placeholder="At least 6 characters"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+              textContentType={tab === 'login' ? 'password' : 'newPassword'}
+              trailing={
+                <Pressable
+                  onPress={() => setShowPassword((v) => !v)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  style={styles.eyeButton}
                 >
                   {showPassword ? (
-                    <EyeOff size={18} color={COLORS.textSecondary} />
+                    <EyeOff size={18} color={colors.textSecondary} />
                   ) : (
-                    <Eye size={18} color={COLORS.textSecondary} />
+                    <Eye size={18} color={colors.textSecondary} />
                   )}
-                </TouchableOpacity>
-              </View>
-            </View>
+                </Pressable>
+              }
+            />
 
             <Button
-              title={tab === 'login' ? 'Sign In' : 'Create Account'}
+              title={tab === 'login' ? 'Sign in' : 'Create account'}
               onPress={handleSubmit}
               loading={isSubmitting}
               size="lg"
-              style={styles.submitBtn}
+              style={styles.submit}
             />
           </View>
 
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Social Sign-In */}
-          <View style={styles.socialButtons}>
-            <TouchableOpacity
-              style={styles.appleButton}
-              onPress={() => handleOAuthPlaceholder('Apple')}
-            >
-              <Text style={styles.appleButtonText}> Continue with Apple</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={() => handleOAuthPlaceholder('Google')}
-            >
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Legal note */}
-          <Text style={styles.legalNotice}>
+          <Text style={styles.legal}>
             By continuing, you agree to PairFit's{' '}
-            <Text
-              style={styles.legalLink}
-              onPress={() => router.push('/legal/terms')}
-            >
+            <Text style={styles.legalLink} onPress={() => router.push('/legal/terms')} accessibilityRole="link">
               Terms of Service
             </Text>{' '}
             and{' '}
-            <Text
-              style={styles.legalLink}
-              onPress={() => router.push('/legal/privacy')}
-            >
+            <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy')} accessibilityRole="link">
               Privacy Policy
             </Text>
             .
@@ -256,184 +197,150 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  container: {
-    paddingHorizontal: 22,
-    paddingTop: 24,
-    paddingBottom: 36,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  brandTitle: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    letterSpacing: -1,
-  },
-  brandSubtitle: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.cardMuted,
-    borderRadius: 9999,
-    padding: 4,
-    marginBottom: 24,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 9999,
-  },
-  tabButtonActive: {
-    backgroundColor: COLORS.card,
-  },
-  tabButtonText: {
-    fontSize: 13.5,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  tabButtonTextActive: {
-    color: COLORS.obsidian,
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.dangerLight,
-    borderWidth: 1,
-    borderColor: COLORS.dangerBorder,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 16,
-  },
-  errorBannerText: {
-    flex: 1,
-    fontSize: 12.5,
-    color: COLORS.danger,
-    fontWeight: '500',
-  },
-  infoBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 16,
-  },
-  infoBannerText: {
-    flex: 1,
-    fontSize: 12.5,
-    color: '#065F46',
-    fontWeight: '500',
-  },
-  form: {
-    gap: 16,
-  },
-  inputGroup: {
-    gap: 6,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.obsidian,
-  },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 14.5,
-    color: COLORS.obsidian,
-  },
-  eyeBtn: {
-    padding: 8,
-  },
-  submitBtn: {
-    marginTop: 8,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-  dividerText: {
-    paddingHorizontal: 12,
-    fontSize: 12,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  socialButtons: {
-    gap: 12,
-  },
-  appleButton: {
-    backgroundColor: '#000000',
-    borderRadius: 9999,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14.5,
-    fontWeight: '600',
-  },
-  googleButton: {
-    backgroundColor: COLORS.card,
-    borderRadius: 9999,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleButtonText: {
-    color: COLORS.obsidian,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  legalNotice: {
-    fontSize: 11.5,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 28,
-  },
-  legalLink: {
-    color: COLORS.obsidian,
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-});
+function Field({
+  label,
+  styles,
+  trailing,
+  ...inputProps
+}: TextInputProps & { label: string; styles: ReturnType<typeof makeStyles>; trailing?: React.ReactNode }) {
+  const { colors } = useTheme().theme;
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <View>
+      <Text style={styles.label}>{label}</Text>
+      <View style={[styles.inputWrap, isFocused && styles.inputWrapFocused]}>
+        <TextInput
+          {...inputProps}
+          style={styles.input}
+          placeholderTextColor={colors.textMuted}
+          selectionColor={colors.accent}
+          accessibilityLabel={label}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+        />
+        {trailing}
+      </View>
+    </View>
+  );
+}
+
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.canvas,
+    },
+    flex: {
+      flex: 1,
+    },
+    container: {
+      paddingHorizontal: SPACING.xl + 2,
+      paddingTop: SPACING.xxxl,
+      paddingBottom: SPACING.xxxl,
+    },
+    brand: {
+      alignItems: 'center',
+      marginBottom: SPACING.xxxl,
+    },
+    wordmark: {
+      ...TYPE.display,
+      color: colors.text,
+      marginTop: SPACING.md,
+    },
+    tagline: {
+      ...TYPE.body,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    tabs: {
+      flexDirection: 'row',
+      backgroundColor: colors.surfaceSunken,
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: SPACING.xs,
+      marginBottom: SPACING.xxl,
+    },
+    tab: {
+      flex: 1,
+      minHeight: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: RADIUS.sm,
+    },
+    tabActive: {
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+    },
+    tabText: {
+      ...TYPE.caption,
+      color: colors.textMuted,
+    },
+    tabTextActive: {
+      color: colors.text,
+    },
+    infoBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      backgroundColor: colors.successSoft,
+      borderWidth: 1,
+      borderColor: colors.success,
+      borderRadius: RADIUS.md,
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+    },
+    infoText: {
+      ...TYPE.caption,
+      color: colors.text,
+      flex: 1,
+    },
+    form: {
+      gap: SPACING.lg,
+    },
+    label: {
+      ...TYPE.overline,
+      color: colors.textSecondary,
+      marginBottom: SPACING.sm,
+    },
+    inputWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surfaceSunken,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: RADIUS.md,
+      paddingHorizontal: SPACING.lg,
+    },
+    inputWrapFocused: {
+      borderColor: colors.accent,
+    },
+    input: {
+      ...TYPE.body,
+      flex: 1,
+      color: colors.text,
+      paddingVertical: SPACING.md + 2,
+      // The wrapper's gold border is the focus indicator; drop the browser's ring on web.
+      outlineWidth: 0,
+    },
+    eyeButton: {
+      padding: SPACING.xs,
+      marginLeft: SPACING.sm,
+    },
+    submit: {
+      marginTop: SPACING.sm,
+    },
+    legal: {
+      ...TYPE.caption,
+      color: colors.textMuted,
+      textAlign: 'center',
+      marginTop: SPACING.xxl,
+    },
+    legalLink: {
+      color: colors.text,
+      textDecorationLine: 'underline',
+    },
+  });

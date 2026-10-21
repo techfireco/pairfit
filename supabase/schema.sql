@@ -45,15 +45,15 @@ create trigger on_auth_user_created
 
 -- ---------------------------------------------------------------- RLS
 -- (Defense in depth: the API uses the service_role key and enforces the
---  user itself; these policies also allow future direct client access.)
+--  user itself.) Clients get READ-only policies: every write must go through
+--  the API so the free-plan item limit can't be skipped.
 alter table public.profiles enable row level security;
 alter table public.items enable row level security;
 
 drop policy if exists "users manage own items" on public.items;
-create policy "users manage own items" on public.items
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+drop policy if exists "users read own items" on public.items;
+create policy "users read own items" on public.items
+  for select using (auth.uid() = user_id);
 
 drop policy if exists "users read own profile" on public.profiles;
 create policy "users read own profile" on public.profiles
@@ -65,13 +65,9 @@ values ('wardrobe', 'wardrobe', false)
 on conflict (id) do nothing;
 
 drop policy if exists "users manage own photos" on storage.objects;
-create policy "users manage own photos" on storage.objects
-  for all
-  using (
-    bucket_id = 'wardrobe'
-    and auth.uid()::text = (storage.foldername(name))[1]
-  )
-  with check (
+drop policy if exists "users read own photos" on storage.objects;
+create policy "users read own photos" on storage.objects
+  for select using (
     bucket_id = 'wardrobe'
     and auth.uid()::text = (storage.foldername(name))[1]
   );

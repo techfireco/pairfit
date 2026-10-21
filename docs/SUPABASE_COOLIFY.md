@@ -29,6 +29,10 @@ Your Oracle free-tier box (12 GB RAM) comfortably runs both.
 2. Paste the entire contents of `supabase/schema.sql` and **Run**.
 3. Verify: Table Editor should show `profiles` and `items`; Storage should show
    a private bucket named `wardrobe`.
+4. **Existing databases** (set up before Oct 2026): also run every file in
+   `supabase/migrations/` in name order. `20261021_lock_client_writes.sql`
+   removes client write access (closes a free-plan bypass) and ends with a
+   table of the remaining policies — `items` should have only one, a SELECT.
 
 ## Step 3 — Auth settings (Supabase dashboard)
 

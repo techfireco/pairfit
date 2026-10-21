@@ -1,35 +1,40 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-  Linking,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Shield, FileText, LogOut, Trash2, ChevronRight, Mail, Moon, Sun, Smartphone } from 'lucide-react-native';
 import { useAuth } from '../../src/context/AuthContext';
-import { COLORS, SHADOWS } from '../../src/constants/theme';
-import { PaywallModal } from '../../src/components/PaywallModal';
 import {
-  User,
-  Shield,
-  FileText,
-  LogOut,
-  Trash2,
-  ChevronRight,
-  Zap,
-  Mail,
-} from 'lucide-react-native';
+  useTheme,
+  useThemedStyles,
+  Theme,
+  ThemePreference,
+  TYPE,
+  RADIUS,
+  SPACING,
+  MAX_FONT_SCALE,
+} from '../../src/theme';
+import { haptics } from '../../src/utils/haptics';
+
+const DEFAULT_FREE_LIMIT = 30;
+const SUPPORT_URL = 'mailto:support@getpairfit.com?subject=PairFit%20App%20Support';
+const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; Icon: typeof Moon }[] = [
+  { value: 'dark', label: 'Dark', Icon: Moon },
+  { value: 'light', label: 'Light', Icon: Sun },
+  { value: 'system', label: 'System', Icon: Smartphone },
+];
+
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return (parts[0]?.[0] ?? 'P').concat(parts[1]?.[0] ?? '').toUpperCase();
+}
 
 export default function ProfileScreen() {
   const { user, me, signOut, deleteAccount } = useAuth();
-  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
+  const { theme, preference, setPreference } = useTheme();
+  const { colors } = theme;
+  const styles = useThemedStyles(makeStyles);
   const [isDeleting, setIsDeleting] = useState(false);
-
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -39,14 +44,14 @@ export default function ProfileScreen() {
   };
 
   const handleDeleteAccountPress = () => {
-    // Explicit confirmed dialog before deletion
+    haptics.warning();
     Alert.alert(
-      'Delete Account',
-      'Are you sure you want to permanently delete your account and all wardrobe items? This cannot be undone.',
+      'Delete account',
+      'This permanently deletes your account and every piece in your closet. It cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete Permanently',
+          text: 'Delete permanently',
           style: 'destructive',
           onPress: async () => {
             setIsDeleting(true);
@@ -63,349 +68,330 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleSupportPress = () => {
-    Linking.openURL('mailto:support@getpairfit.com?subject=PairFit%20App%20Support');
-  };
-
+  const displayName = user?.user_metadata?.name || 'PairFit member';
   const count = me?.itemCount ?? 0;
-  const limit = me?.itemLimit ?? 30;
+  const limit = me?.itemLimit ?? DEFAULT_FREE_LIMIT;
   const isPro = me?.isPro ?? false;
   const progressRatio = isPro ? 1 : Math.min(count / limit, 1);
+  const isFull = !isPro && progressRatio >= 1;
 
   return (
-    <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, SPACING.lg) }]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header (C5: Title matches tab label 'Profile') */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
-        </View>
+        <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Profile
+        </Text>
 
-        {/* User Card */}
-        <View style={[styles.userCard, SHADOWS.card]}>
+        <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <User size={30} color={COLORS.obsidian} />
+            <Text style={styles.avatarText} maxFontSizeMultiplier={1.2}>
+              {initialsOf(displayName)}
+            </Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>
-              {user?.user_metadata?.name || 'PairFit Member'}
+            <Text style={styles.userName} numberOfLines={1}>
+              {displayName}
             </Text>
-            <Text style={styles.userEmail}>{user?.email || 'user@pairfit.app'}</Text>
+            <Text style={styles.userEmail} numberOfLines={1}>
+              {user?.email || ''}
+            </Text>
           </View>
         </View>
 
-        {/* Plan Status Card (C6: Consistent wording) */}
-        <View style={[styles.planCard, SHADOWS.card]}>
+        <View style={styles.card}>
           <View style={styles.planHeader}>
             <View>
-              <Text style={styles.planTitle}>{isPro ? 'PairFit Pro' : 'Free Plan'}</Text>
-              <Text style={styles.planSubtitle}>
-                {isPro ? 'Unlimited clothing items' : `${count} / ${limit} items (Free plan)`}
-              </Text>
+              <Text style={styles.planTitle}>{isPro ? 'PairFit Pro' : 'Free plan'}</Text>
+              <Text style={styles.planSubtitle}>{isPro ? 'Unlimited pieces' : `${count} of ${limit} pieces`}</Text>
             </View>
-            <View style={styles.planBadge}>
-              <Text style={styles.planBadgeText}>{isPro ? 'PRO' : 'FREE'}</Text>
-            </View>
+            <Text style={styles.planBadge}>{isPro ? 'Pro' : 'Free'}</Text>
           </View>
-
-          {/* Progress Bar */}
-          <View style={styles.progressTrack}>
+          <View
+            style={styles.progressTrack}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Closet space used"
+            accessibilityValue={{ min: 0, max: limit, now: Math.min(count, limit) }}
+          >
             <View
               style={[
                 styles.progressFill,
                 { width: `${progressRatio * 100}%` },
-                progressRatio >= 1 && !isPro && { backgroundColor: COLORS.danger },
+                isFull && { backgroundColor: colors.danger },
               ]}
             />
           </View>
-
-          {!isPro && (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={[styles.upgradeBannerBtn, SHADOWS.button]}
-              onPress={() => setIsPaywallOpen(true)}
-            >
-              <Zap size={16} color="#FFFFFF" />
-              <Text style={styles.upgradeBtnText}>Upgrade to Unlimited Pro</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
-        {/* Legal & Information Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Legal & Information</Text>
-          <View style={[styles.menuGroup, SHADOWS.soft]}>
-            <TouchableOpacity
-              style={styles.menuRow}
-              onPress={() => router.push('/legal/terms')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.menuIconWrap}>
-                <FileText size={18} color={COLORS.obsidian} />
-              </View>
-              <Text style={styles.menuLabel}>Terms of Service</Text>
-              <ChevronRight size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuRow}
-              onPress={() => router.push('/legal/privacy')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.menuIconWrap}>
-                <Shield size={18} color={COLORS.obsidian} />
-              </View>
-              <Text style={styles.menuLabel}>Privacy Policy</Text>
-              <ChevronRight size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuRow}
-              onPress={handleSupportPress}
-              activeOpacity={0.7}
-            >
-              <View style={styles.menuIconWrap}>
-                <Mail size={18} color={COLORS.obsidian} />
-              </View>
-              <Text style={styles.menuLabel}>Contact Support</Text>
-              <ChevronRight size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </View>
+        <Text style={styles.sectionHeader}>Appearance</Text>
+        <View style={styles.segmented} accessibilityRole="radiogroup">
+          {APPEARANCE_OPTIONS.map(({ value, label, Icon }) => {
+            const isSelected = preference === value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => {
+                  if (!isSelected) haptics.selection();
+                  setPreference(value);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: isSelected }}
+                accessibilityLabel={`${label} appearance`}
+                style={[styles.segment, isSelected && styles.segmentSelected]}
+              >
+                <Icon size={16} color={isSelected ? colors.textOnAccent : colors.textSecondary} />
+                <Text style={[styles.segmentText, isSelected && styles.segmentTextSelected]}>{label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        {/* Account Actions Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Session</Text>
-          <View style={[styles.menuGroup, SHADOWS.soft]}>
-            <TouchableOpacity style={styles.menuRow} onPress={handleSignOut} activeOpacity={0.7}>
-              <View style={styles.menuIconWrap}>
-                <LogOut size={18} color={COLORS.obsidian} />
-              </View>
-              <Text style={styles.menuLabel}>Sign Out</Text>
-              <ChevronRight size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </View>
+        <Text style={styles.sectionHeader}>About</Text>
+        <View style={styles.menuGroup}>
+          <MenuRow
+            label="Terms of Service"
+            icon={<FileText size={18} color={colors.textSecondary} />}
+            onPress={() => router.push('/legal/terms')}
+            styles={styles}
+            chevronColor={colors.textMuted}
+          />
+          <View style={styles.menuDivider} />
+          <MenuRow
+            label="Privacy Policy"
+            icon={<Shield size={18} color={colors.textSecondary} />}
+            onPress={() => router.push('/legal/privacy')}
+            styles={styles}
+            chevronColor={colors.textMuted}
+          />
+          <View style={styles.menuDivider} />
+          <MenuRow
+            label="Contact support"
+            icon={<Mail size={18} color={colors.textSecondary} />}
+            onPress={() => Linking.openURL(SUPPORT_URL)}
+            styles={styles}
+            chevronColor={colors.textMuted}
+          />
         </View>
 
-        {/* Danger Zone */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Danger Zone</Text>
-          <View style={[styles.menuGroup, SHADOWS.soft]}>
-            <TouchableOpacity
-              style={styles.deleteRow}
-              onPress={handleDeleteAccountPress}
-              disabled={isDeleting}
-              activeOpacity={0.7}
-            >
-              {isDeleting ? (
-                <ActivityIndicator size="small" color={COLORS.danger} />
-              ) : (
-                <>
-                  <Trash2 size={18} color={COLORS.danger} />
-                  <Text style={styles.deleteLabel}>Delete Account</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+        <Text style={styles.sectionHeader}>Account</Text>
+        <View style={styles.menuGroup}>
+          <MenuRow
+            label="Sign out"
+            icon={<LogOut size={18} color={colors.textSecondary} />}
+            onPress={handleSignOut}
+            styles={styles}
+            chevronColor={colors.textMuted}
+          />
+          <View style={styles.menuDivider} />
+          <Pressable
+            style={styles.menuRow}
+            onPress={handleDeleteAccountPress}
+            disabled={isDeleting}
+            accessibilityRole="button"
+            accessibilityLabel="Delete account"
+          >
+            {isDeleting ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <>
+                <Trash2 size={18} color={colors.danger} />
+                <Text style={styles.deleteLabel}>Delete account</Text>
+              </>
+            )}
+          </Pressable>
         </View>
 
-        {/* Version footer */}
-        <Text style={styles.versionText}>PairFit v1.0.0 (Build 1)</Text>
-
-        {/* Pro Paywall Modal */}
-        <PaywallModal
-          visible={isPaywallOpen}
-          onClose={() => setIsPaywallOpen(false)}
-        />
+        <Text style={styles.versionText}>PairFit 1.0.0</Text>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  container: {
-    paddingHorizontal: 20,
-    paddingBottom: 36,
-  },
-  header: {
-    marginBottom: 16,
-    paddingRight: 48, // Generous padding so Expo Go gear button doesn't cover title
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    letterSpacing: -0.8,
-  },
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    marginBottom: 16,
-    gap: 14,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: COLORS.cardMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.obsidian,
-  },
-  userEmail: {
-    fontSize: 13,
-    color: '#4B5563', // Darkened for accessibility
-    marginTop: 2,
-  },
-  planCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    marginBottom: 24,
-  },
-  planHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  planTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-  },
-  planSubtitle: {
-    fontSize: 13,
-    color: '#4B5563',
-    marginTop: 2,
-  },
-  planBadge: {
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 9999,
-    borderWidth: 1,
-    borderColor: '#DDD6FE',
-  },
-  planBadgeText: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: '#6D28D9',
-    letterSpacing: 0.6,
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: 9999,
-    backgroundColor: COLORS.cardMuted,
-    overflow: 'hidden',
-    marginBottom: 14,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 9999,
-    backgroundColor: COLORS.obsidian,
-  },
-  upgradeBannerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.obsidian,
-    borderRadius: 9999,
-    paddingVertical: 12,
-    minHeight: 46,
-  },
-  upgradeBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13.5,
-    fontWeight: '700',
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4B5563',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-    paddingLeft: 4,
-  },
-  menuGroup: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    overflow: 'hidden',
-  },
-  menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 16,
-    gap: 12,
-    minHeight: 48, // 48dp accessible tap target
-  },
-  menuIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: COLORS.cardMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuLabel: {
-    flex: 1,
-    fontSize: 14.5,
-    fontWeight: '600',
-    color: COLORS.obsidian,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: COLORS.borderLight,
-    marginLeft: 56,
-  },
-  deleteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 15,
-    paddingHorizontal: 16,
-    minHeight: 48,
-  },
-  deleteLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.danger,
-  },
-  versionText: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-});
+function MenuRow({
+  label,
+  icon,
+  onPress,
+  styles,
+  chevronColor,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  chevronColor: string;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      {icon}
+      <Text style={styles.menuLabel}>{label}</Text>
+      <ChevronRight size={18} color={chevronColor} />
+    </Pressable>
+  );
+}
+
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.canvas,
+    },
+    container: {
+      paddingHorizontal: SPACING.xl,
+      paddingBottom: SPACING.xxxl,
+    },
+    title: {
+      ...TYPE.display,
+      color: colors.text,
+      marginBottom: SPACING.xl,
+    },
+    userCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.lg,
+      marginBottom: SPACING.lg,
+    },
+    avatar: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: colors.accentSoft,
+      borderWidth: 1,
+      borderColor: colors.accentEdge,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: {
+      ...TYPE.heading,
+      color: colors.accentText,
+    },
+    userInfo: {
+      flex: 1,
+    },
+    userName: {
+      ...TYPE.heading,
+      color: colors.text,
+    },
+    userEmail: {
+      ...TYPE.caption,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.lg + 2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: SPACING.lg,
+      marginBottom: SPACING.xxl,
+    },
+    planHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: SPACING.md + 2,
+    },
+    planTitle: {
+      ...TYPE.subheading,
+      color: colors.text,
+    },
+    planSubtitle: {
+      ...TYPE.caption,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    planBadge: {
+      ...TYPE.overline,
+      color: colors.accentText,
+      borderWidth: 1,
+      borderColor: colors.accentEdge,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 3,
+    },
+    progressTrack: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.surfaceSunken,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 3,
+      backgroundColor: colors.accent,
+    },
+    sectionHeader: {
+      ...TYPE.overline,
+      color: colors.textMuted,
+      marginBottom: SPACING.sm,
+      paddingLeft: SPACING.xs,
+    },
+    segmented: {
+      flexDirection: 'row',
+      backgroundColor: colors.surfaceSunken,
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: SPACING.xs,
+      gap: SPACING.xs,
+      marginBottom: SPACING.xxl,
+    },
+    segment: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minHeight: 40,
+      borderRadius: RADIUS.sm,
+    },
+    segmentSelected: {
+      backgroundColor: colors.accent,
+    },
+    segmentText: {
+      ...TYPE.caption,
+      color: colors.textSecondary,
+    },
+    segmentTextSelected: {
+      color: colors.textOnAccent,
+    },
+    menuGroup: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.lg + 2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      marginBottom: SPACING.xxl,
+    },
+    menuRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.md + 2,
+      paddingVertical: SPACING.lg,
+      paddingHorizontal: SPACING.lg,
+      minHeight: 54,
+    },
+    menuRowPressed: {
+      backgroundColor: colors.surfaceRaised,
+    },
+    menuLabel: {
+      ...TYPE.bodyStrong,
+      flex: 1,
+      color: colors.text,
+    },
+    menuDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginLeft: SPACING.lg + 18 + SPACING.md + 2,
+    },
+    deleteLabel: {
+      ...TYPE.bodyStrong,
+      color: colors.dangerText,
+    },
+    versionText: {
+      ...TYPE.caption,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+  });
