@@ -18,7 +18,7 @@ import { COLORS, SHADOWS } from '../../src/constants/theme';
 import { ClothingCard } from '../../src/components/ClothingCard';
 import { Badge } from '../../src/components/Badge';
 import { AddItemModal } from '../../src/components/AddItemModal';
-import { PaywallModal } from '../../src/components/PaywallModal';
+import { LimitReachedModal } from '../../src/components/LimitReachedModal';
 import { ErrorBanner } from '../../src/components/ErrorBanner';
 import { Plus, Shirt } from 'lucide-react-native';
 
@@ -29,7 +29,7 @@ export default function ClosetScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
+  const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
   const [error, setError] = useState<any>(null);
 
   const { me, refreshMe } = useAuth();
@@ -257,16 +257,17 @@ export default function ClosetScreen() {
           visible={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           onSuccess={loadWardrobe}
-          onUpgrade={() => {
+          onLimitReached={() => {
             setIsAddModalOpen(false);
-            setIsPaywallOpen(true);
+            setIsLimitModalOpen(true);
           }}
         />
 
-        {/* Paywall Modal */}
-        <PaywallModal
-          visible={isPaywallOpen}
-          onClose={() => setIsPaywallOpen(false)}
+        {/* Free closet limit reached */}
+        <LimitReachedModal
+          visible={isLimitModalOpen}
+          limit={limit}
+          onClose={() => setIsLimitModalOpen(false)}
         />
       </View>
     </View>

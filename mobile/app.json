@@ -24,9 +24,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -49,7 +53,8 @@
         "expo-image-picker",
         {
           "photosPermission": "PairFit needs access to your photos to upload wardrobe items.",
-          "cameraPermission": "PairFit needs access to your camera to snap photos of your clothes."
+          "cameraPermission": "PairFit needs access to your camera to snap photos of your clothes.",
+          "microphonePermission": false
         }
       ],
       "expo-image"

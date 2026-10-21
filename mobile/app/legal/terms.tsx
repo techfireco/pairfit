@@ -40,7 +40,7 @@ export default function TermsOfServiceScreen() {
         <View style={styles.section}>
           <Text style={styles.heading}>5. Free Plan & Usage Quotas</Text>
           <Text style={styles.body}>
-            Free accounts may store up to 30 clothing items. Attempting to upload beyond this limit will require upgrading to a PairFit Pro subscription plan. We reserve the right to modify usage limits upon reasonable notice.
+            Free accounts may store up to 30 clothing items. Once you reach this limit, remove an item before adding a new one. We reserve the right to modify usage limits upon reasonable notice.
           </Text>
         </View>
 

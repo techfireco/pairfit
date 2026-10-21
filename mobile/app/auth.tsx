@@ -68,12 +68,6 @@ export default function AuthScreen() {
     }
   };
 
-  const handleOAuthPlaceholder = (provider: 'Apple' | 'Google') => {
-    alert(
-      `${provider} Sign-In: In this release, use email & password to sign in. ${provider} OAuth is wired in the backend and ready for production provisioning.`
-    );
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -206,30 +200,6 @@ export default function AuthScreen() {
               size="lg"
               style={styles.submitBtn}
             />
-          </View>
-
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Social Sign-In */}
-          <View style={styles.socialButtons}>
-            <TouchableOpacity
-              style={styles.appleButton}
-              onPress={() => handleOAuthPlaceholder('Apple')}
-            >
-              <Text style={styles.appleButtonText}> Continue with Apple</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={() => handleOAuthPlaceholder('Google')}
-            >
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Legal note */}
@@ -377,52 +347,6 @@ const styles = StyleSheet.create({
   },
   submitBtn: {
     marginTop: 8,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-  dividerText: {
-    paddingHorizontal: 12,
-    fontSize: 12,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  socialButtons: {
-    gap: 12,
-  },
-  appleButton: {
-    backgroundColor: '#000000',
-    borderRadius: 9999,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14.5,
-    fontWeight: '600',
-  },
-  googleButton: {
-    backgroundColor: COLORS.card,
-    borderRadius: 9999,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleButtonText: {
-    color: COLORS.obsidian,
-    fontSize: 14,
-    fontWeight: '600',
   },
   legalNotice: {
     fontSize: 11.5,

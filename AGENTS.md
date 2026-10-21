@@ -14,6 +14,7 @@ wardrobe with color-theory scores + reasons.
 ## Commands
 
 - `npm install` → `npm start` (port 3000)
+- `npm test` — server unit tests (Node's built-in test runner, `test/`)
 
 ## Architecture rules (do not break)
 
@@ -24,6 +25,8 @@ wardrobe with color-theory scores + reasons.
 3. Storage paths MUST stay `{user_id}/{uuid}.jpg` — RLS and storage policies depend on the
    first folder segment being the user's id.
 4. Photo reads go through server-generated signed URLs (7-day TTL), bucket `wardrobe` (private).
+   Clients have READ-only RLS policies; all writes go through the API (free-plan limit). The `/sb`
+   proxy only forwards `/auth/v1/*` and `/storage/v1/object/sign/*` (`lib/supabaseProxy.js`).
 5. Required env vars: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
    `FREE_ITEM_LIMIT` (30), `PORT`. Server exits at boot if URL/service key are missing.
 
@@ -32,6 +35,8 @@ wardrobe with color-theory scores + reasons.
 - `GET /api/config` → `{ supabaseUrl, supabaseAnonKey }` (public, no auth)
 - All others need `Authorization: Bearer <Supabase user JWT>`:
 - `GET /api/me` → `{ id, email, name, isPro, itemCount, itemLimit }`
+- `DELETE /api/me` → `{ ok: true }` — permanently deletes every photo, every item row, then the
+  auth user (`lib/accountDeletion.js`). Required by App Store 5.1.1(v) and Google Play.
 - `GET /api/items` → newest-first items with signed `photoUrl`
 - `POST /api/items` (multipart: `photo`, `name`, `category`) → created item;
   free users at/over the limit get `402 { error, upgrade: true }` — surface an upgrade prompt

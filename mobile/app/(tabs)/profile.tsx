@@ -13,7 +13,6 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { COLORS, SHADOWS } from '../../src/constants/theme';
-import { PaywallModal } from '../../src/components/PaywallModal';
 import {
   User,
   Shield,
@@ -21,13 +20,11 @@ import {
   LogOut,
   Trash2,
   ChevronRight,
-  Zap,
   Mail,
 } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const { user, me, signOut, deleteAccount } = useAuth();
-  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const router = useRouter();
@@ -117,17 +114,6 @@ export default function ProfileScreen() {
               ]}
             />
           </View>
-
-          {!isPro && (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={[styles.upgradeBannerBtn, SHADOWS.button]}
-              onPress={() => setIsPaywallOpen(true)}
-            >
-              <Zap size={16} color="#FFFFFF" />
-              <Text style={styles.upgradeBtnText}>Upgrade to Unlimited Pro</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Legal & Information Section */}
@@ -214,12 +200,6 @@ export default function ProfileScreen() {
 
         {/* Version footer */}
         <Text style={styles.versionText}>PairFit v1.0.0 (Build 1)</Text>
-
-        {/* Pro Paywall Modal */}
-        <PaywallModal
-          visible={isPaywallOpen}
-          onClose={() => setIsPaywallOpen(false)}
-        />
       </ScrollView>
     </View>
   );
@@ -319,27 +299,11 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     backgroundColor: COLORS.cardMuted,
     overflow: 'hidden',
-    marginBottom: 14,
   },
   progressFill: {
     height: '100%',
     borderRadius: 9999,
     backgroundColor: COLORS.obsidian,
-  },
-  upgradeBannerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.obsidian,
-    borderRadius: 9999,
-    paddingVertical: 12,
-    minHeight: 46,
-  },
-  upgradeBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13.5,
-    fontWeight: '700',
   },
   section: {
     marginBottom: 20,

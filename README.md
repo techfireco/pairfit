@@ -48,7 +48,10 @@ docker build -t pairfit .
 docker run -p 3000:3000 --env-file .env pairfit
 ```
 
-First run `supabase/schema.sql` in your Supabase SQL editor.
+First run `supabase/schema.sql` in your Supabase SQL editor. Existing databases
+also need each file in `supabase/migrations/`, in order.
+
+Account deletion page for the Google Play listing: `https://<your-api-host>/delete-account.html`.
 
 ## How the matching works (`server.js`)
 
@@ -81,6 +84,7 @@ Auth = Supabase JWT in the `Authorization: Bearer <token>` header
 |---|---|---|---|
 | GET | `/api/config` | — | `{supabaseUrl, supabaseAnonKey}` for the frontend |
 | GET | `/api/me` | JWT | `{id, email, name, isPro, itemCount, itemLimit}` |
+| DELETE | `/api/me` | JWT | Permanently delete the account, all photos and items |
 | GET | `/api/items` | JWT | User's wardrobe (signed photo URLs) |
 | POST | `/api/items` | JWT | Multipart: `photo`, `name`, `category` → server extracts color |
 | DELETE | `/api/items/:id` | JWT | Remove item (+ its photo) |

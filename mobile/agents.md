@@ -33,7 +33,8 @@ You are building the official PairFit native mobile client (iOS & Android) with 
    - No footwear or accessories in v1.
 5. **Freemium Limit**:
    - 30 items for Free users (`<count> / 30 items (Free plan)`).
-   - Item 31 upload triggers `HTTP 402 { error, upgrade: true }` $\rightarrow$ surface the upgrade paywall sheet.
+   - Item 31 upload triggers `HTTP 402 { error, upgrade: true }` $\rightarrow$ show `LimitReachedModal`.
+   - No prices, trials or purchase buttons until real in-app purchases exist (store rejection risk).
 6. **Two-Tap Delete UX**:
    - Two-tap inline confirmation: First tap arms button ("Tap again to confirm remove", auto-disarms after 4s), second tap executes `DELETE /api/items/:id`. No native alert popups.
 7. **Design Aesthetics**:

@@ -26,10 +26,10 @@ interface AddItemModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  onUpgrade: () => void;
+  onLimitReached: () => void;
 }
 
-export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItemModalProps) {
+export function AddItemModal({ visible, onClose, onSuccess, onLimitReached }: AddItemModalProps) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<CategoryValue | null>(null); // C2: No default category preselected
@@ -64,11 +64,8 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
           quality: 0.85,
         });
       } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission Denied', 'Photo library permission is required to select photos.');
-          return;
-        }
+        // The system photo picker needs no permission on iOS or Android, so we
+        // never ask for broad photo access (Google Play photo/video policy).
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           allowsEditing: true,
@@ -117,7 +114,7 @@ export function AddItemModal({ visible, onClose, onSuccess, onUpgrade }: AddItem
       setIsUploading(false);
       if (err instanceof ApiError && err.upgrade) {
         onClose();
-        onUpgrade();
+        onLimitReached();
       } else {
         setErrorMessage(getUserFriendlyErrorMessage(err, 'Upload Item'));
       }

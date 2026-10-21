@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { getSupabase } from '../lib/supabase';
-import { fetchMe } from '../api/client';
+import { fetchMe, deleteAccountApi } from '../api/client';
 import { MeResponse } from '../types';
+import { getUserFriendlyErrorMessage } from '../utils/errors';
 
 interface AuthContextType {
   user: User | null;
@@ -168,15 +169,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAccount = useCallback(async () => {
     try {
+      // Server removes photos, wardrobe rows and the auth user itself.
+      await deleteAccountApi();
+    } catch (err: any) {
+      return { error: getUserFriendlyErrorMessage(err, 'Delete Account') };
+    }
+
+    try {
+      // The user no longer exists server-side, so only clear the local session.
       const sb = await getSupabase();
-      await sb.auth.signOut();
+      await sb.auth.signOut({ scope: 'local' });
+    } catch (err) {
+      console.warn('Local sign out after account deletion failed:', err);
+    } finally {
       setUser(null);
       setSession(null);
       setMe(null);
-      return {};
-    } catch (err: any) {
-      return { error: err.message || 'Could not delete account.' };
     }
+    return {};
   }, []);
 
   const contextValue = useMemo(
