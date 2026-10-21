@@ -1,28 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  RefreshControl,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Plus } from 'lucide-react-native';
 import { useAuth } from '../../src/context/AuthContext';
 import { Item, CATEGORIES } from '../../src/types';
 import { fetchItems, deleteItemApi } from '../../src/api/client';
-import { COLORS, SHADOWS } from '../../src/constants/theme';
+import { useTheme, useThemedStyles, Theme, TYPE, RADIUS, SPACING, MAX_FONT_SCALE } from '../../src/theme';
 import { ClothingCard } from '../../src/components/ClothingCard';
-import { Badge } from '../../src/components/Badge';
 import { AddItemModal } from '../../src/components/AddItemModal';
 import { LimitReachedModal } from '../../src/components/LimitReachedModal';
 import { ErrorBanner } from '../../src/components/ErrorBanner';
-import { Plus, Shirt } from 'lucide-react-native';
+import { Button } from '../../src/components/Button';
+import { Skeleton } from '../../src/components/Skeleton';
+import { SwatchStack } from '../../src/components/SwatchStack';
+import { useToast } from '../../src/components/Toast';
+import { haptics } from '../../src/utils/haptics';
+
+const FILTER_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'top', label: 'Tops' },
+  { key: 'bottom', label: 'Bottoms' },
+  { key: 'outer', label: 'Outerwear' },
+  { key: 'onepiece', label: 'One-piece' },
+];
+const DEFAULT_FREE_LIMIT = 30;
+const SKELETON_TILES = [0, 1, 2, 3];
 
 export default function ClosetScreen() {
+  const { colors } = useTheme().theme;
+  const styles = useThemedStyles(makeStyles);
   const [items, setItems] = useState<Item[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +40,7 @@ export default function ClosetScreen() {
   const [error, setError] = useState<any>(null);
 
   const { me, refreshMe } = useAuth();
+  const { showToast } = useToast();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -40,22 +48,11 @@ export default function ClosetScreen() {
     setError(null);
     try {
       const data = await fetchItems();
-      // Prefetch images so they are warm in expo-image disk-memory cache
-      data.forEach((item) => {
-        if (item.photoUrl) {
-          ExpoImage.prefetch(item.photoUrl);
-        }
-      });
-
       setItems((prev) => {
-        // Keep existing signed URLs during the session to guarantee 100% cache hits
+        // Keep existing signed URLs during the session so images stay cached.
         const prevUrlMap = new Map(prev.map((i) => [i.id, i.photoUrl]));
-        const merged = data.map((item) => ({
-          ...item,
-          photoUrl: prevUrlMap.get(item.id) || item.photoUrl,
-        }));
-
-        if (
+        const merged = data.map((item) => ({ ...item, photoUrl: prevUrlMap.get(item.id) || item.photoUrl }));
+        const isUnchanged =
           prev.length === merged.length &&
           prev.every(
             (p, idx) =>
@@ -64,13 +61,9 @@ export default function ClosetScreen() {
               p.name === merged[idx].name &&
               p.category === merged[idx].category &&
               p.colorHex === merged[idx].colorHex
-          )
-        ) {
-          return prev;
-        }
-        return merged;
+          );
+        return isUnchanged ? prev : merged;
       });
-
       await refreshMe();
     } catch (err: any) {
       setError(err);
@@ -90,11 +83,17 @@ export default function ClosetScreen() {
     loadWardrobe();
   };
 
+  const handleAdded = () => {
+    showToast({ message: 'Added to your closet', tone: 'success' });
+    loadWardrobe();
+  };
+
   const handleDeleteItem = async (id: string) => {
     setDeletingId(id);
     try {
       await deleteItemApi(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
+      showToast({ message: 'Removed from your closet' });
       await refreshMe();
     } catch (err: any) {
       setError(err);
@@ -103,7 +102,11 @@ export default function ClosetScreen() {
     }
   };
 
-  // Filter items by category group
+  const openStyle = useCallback(
+    (itemId: string) => router.push({ pathname: '/(tabs)/style', params: { preselectId: itemId } }),
+    [router]
+  );
+
   const filteredItems = items.filter((item) => {
     if (selectedGroup === 'all') return true;
     const cat = CATEGORIES.find((c) => c.value === item.category);
@@ -111,115 +114,91 @@ export default function ClosetScreen() {
   });
 
   const count = me?.itemCount ?? items.length;
-  const limit = me?.itemLimit ?? 30;
+  const limit = me?.itemLimit ?? DEFAULT_FREE_LIMIT;
   const isPro = me?.isPro ?? false;
-  const planBadgeText = isPro
-    ? 'Pro plan — unlimited items'
-    : `${count} / ${limit} items (Free plan)`;
-
-  const filterTabs = [
-    { key: 'all', label: 'All' },
-    { key: 'top', label: 'Tops' },
-    { key: 'bottom', label: 'Bottoms' },
-    { key: 'outer', label: 'Outerwear' },
-    { key: 'onepiece', label: 'One-Piece' },
-  ];
-
   const isEmpty = items.length === 0;
 
   return (
-    <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.titleColumn}>
-            <Text style={styles.headerTitle}>My Closet</Text>
-            <View style={styles.badgeRow}>
-              <Badge label={planBadgeText} variant="plan" />
-            </View>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, SPACING.lg) }]}>
+      <View style={styles.header}>
+        <View style={styles.titleColumn}>
+          <Text style={styles.overline}>Wardrobe</Text>
+          <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            My closet
+          </Text>
+          <View style={styles.planChip}>
+            <Text style={styles.planText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {isPro ? 'Pro · unlimited pieces' : `${count} of ${limit} pieces`}
+            </Text>
           </View>
-
-          {/* Hide header CTA when closet is empty so there's one clear primary action */}
-          {!isEmpty && (
-            <TouchableOpacity
-              style={[styles.addButton, SHADOWS.button]}
-              onPress={() => setIsAddModalOpen(true)}
-              activeOpacity={0.8}
-            >
-              <Plus size={18} color="#FFFFFF" />
-              <Text style={styles.addButtonText}>Add Piece</Text>
-            </TouchableOpacity>
-          )}
         </View>
-
-        {/* Filter Chips - marginHorizontal breaks out to screen edges so chips don't clip */}
-        <View style={styles.filtersContainer}>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={filterTabs}
-            keyExtractor={(item) => item.key}
-            contentContainerStyle={styles.filterList}
-            renderItem={({ item }) => {
-              const isSelected = selectedGroup === item.key;
-              return (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={[styles.filterChip, isSelected && styles.filterChipSelected]}
-                  onPress={() => setSelectedGroup(item.key)}
-                >
-                  <Text
-                    style={[
-                      styles.filterChipText,
-                      isSelected && styles.filterChipTextSelected,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </View>
-
-        {/* User-friendly Error Notification with Retry & Dismiss */}
-        {error && (
-          <ErrorBanner
-            error={error}
-            onRetry={loadWardrobe}
-            onDismiss={() => setError(null)}
+        {!isEmpty && (
+          <Button
+            title="Add"
+            size="sm"
+            onPress={() => setIsAddModalOpen(true)}
+            icon={<Plus size={16} color={colors.textOnAccent} />}
+            accessibilityLabel="Add a piece"
           />
         )}
+      </View>
 
-        {/* Wardrobe Grid or Empty State */}
+      <View style={styles.filters}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={FILTER_TABS}
+          keyExtractor={(tab) => tab.key}
+          contentContainerStyle={styles.filterList}
+          renderItem={({ item: tab }) => {
+            const isSelected = selectedGroup === tab.key;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                onPress={() => {
+                  if (!isSelected) haptics.selection();
+                  setSelectedGroup(tab.key);
+                }}
+                style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+              >
+                <Text style={[styles.filterText, isSelected && styles.filterTextSelected]}>{tab.label}</Text>
+              </Pressable>
+            );
+          }}
+        />
+      </View>
+
+      <View style={styles.content}>
+        {error && <ErrorBanner error={error} onRetry={loadWardrobe} onDismiss={() => setError(null)} />}
+
         {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.obsidian} />
-            <Text style={styles.loadingText}>Opening your wardrobe…</Text>
+          <View style={styles.skeletonGrid} accessibilityLabel="Loading your closet">
+            {SKELETON_TILES.map((i) => (
+              <View key={i} style={styles.skeletonCell}>
+                <Skeleton style={styles.skeletonTile} radius={RADIUS.lg + 2} />
+                <Skeleton width="70%" height={14} style={styles.skeletonLine} />
+                <Skeleton width="45%" height={12} />
+              </View>
+            ))}
           </View>
         ) : filteredItems.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconWrap}>
-              <Shirt size={32} color={COLORS.obsidian} />
-            </View>
-            <Text style={styles.emptyTitle}>
-              {isEmpty ? 'Your closet is empty' : 'No items in this category'}
+          <View style={styles.empty}>
+            <SwatchStack size={isEmpty ? 120 : 84} />
+            <Text style={styles.emptyTitle} accessibilityRole="header">
+              {isEmpty ? 'Start your closet' : 'Nothing here yet'}
             </Text>
-            <Text style={styles.emptySubtitle}>
+            <Text style={styles.emptyBody}>
               {isEmpty
-                ? 'Snap or upload clothing photos to see color-ranked pairings.'
-                : 'Try picking another category or add a new piece to your closet.'}
+                ? "Add a few tops and bottoms and we'll show you what goes together."
+                : 'Add a piece in this category, or pick another one.'}
             </Text>
-            <TouchableOpacity
-              style={[styles.emptyAddBtn, SHADOWS.button]}
+            <Button
+              title={isEmpty ? 'Add your first piece' : 'Add a piece'}
               onPress={() => setIsAddModalOpen(true)}
-              activeOpacity={0.85}
-            >
-              <Plus size={18} color="#FFFFFF" />
-              <Text style={styles.emptyAddBtnText}>
-                {isEmpty ? 'Add First Clothing Item' : 'Add Clothing Item'}
-              </Text>
-            </TouchableOpacity>
+              size="lg"
+              icon={<Plus size={18} color={colors.textOnAccent} />}
+            />
           </View>
         ) : (
           <FlatList
@@ -230,185 +209,149 @@ export default function ClosetScreen() {
             contentContainerStyle={styles.gridContent}
             showsVerticalScrollIndicator={false}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={COLORS.obsidian}
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} />
             }
-            renderItem={({ item }) => (
+            renderItem={({ item, index }) => (
               <ClothingCard
                 item={item}
-                onPress={() => {
-                  router.push({
-                    pathname: '/(tabs)/style',
-                    params: { preselectId: item.id },
-                  });
-                }}
+                index={index}
+                onPress={() => openStyle(item.id)}
                 onDelete={handleDeleteItem}
                 isDeleting={deletingId === item.id}
               />
             )}
           />
         )}
-
-        {/* Add Item Modal */}
-        <AddItemModal
-          visible={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
-          onSuccess={loadWardrobe}
-          onLimitReached={() => {
-            setIsAddModalOpen(false);
-            setIsLimitModalOpen(true);
-          }}
-        />
-
-        {/* Free closet limit reached */}
-        <LimitReachedModal
-          visible={isLimitModalOpen}
-          limit={limit}
-          onClose={() => setIsLimitModalOpen(false)}
-        />
       </View>
+
+      <AddItemModal
+        visible={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={handleAdded}
+        onLimitReached={() => {
+          setIsAddModalOpen(false);
+          setIsLimitModalOpen(true);
+        }}
+      />
+      <LimitReachedModal visible={isLimitModalOpen} limit={limit} onClose={() => setIsLimitModalOpen(false)} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingBottom: 16,
-    paddingRight: 48, // Generous right margin so Expo Go floating gear icon never covers the header buttons
-  },
-  titleColumn: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    letterSpacing: -0.8,
-  },
-  badgeRow: {
-    marginTop: 8,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.obsidian,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 9999,
-    minHeight: 44, // 44dp tap target
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13.5,
-    fontWeight: '700',
-  },
-  filtersContainer: {
-    marginHorizontal: -20, // Negative margin allows edge-to-edge scroll
-    marginBottom: 16,
-  },
-  filterList: {
-    paddingHorizontal: 20, // Content padding ensures first chip has proper left padding
-    gap: 10,
-    paddingVertical: 2,
-  },
-  filterChip: {
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 9999,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterChipSelected: {
-    backgroundColor: COLORS.obsidian,
-    borderColor: COLORS.obsidian,
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  filterChipTextSelected: {
-    color: '#FFFFFF',
-  },
-  columnWrapper: {
-    gap: 14,
-  },
-  gridContent: {
-    paddingBottom: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    marginTop: 30,
-  },
-  emptyIconWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: COLORS.cardMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  emptyAddBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.obsidian,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 9999,
-    minHeight: 48,
-  },
-  emptyAddBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
-});
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.canvas,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-end',
+      paddingHorizontal: SPACING.xl,
+      paddingBottom: SPACING.lg,
+    },
+    titleColumn: {
+      flex: 1,
+    },
+    overline: {
+      ...TYPE.overline,
+      color: colors.accentText,
+      marginBottom: 2,
+    },
+    title: {
+      ...TYPE.display,
+      color: colors.text,
+    },
+    planChip: {
+      alignSelf: 'flex-start',
+      marginTop: SPACING.sm,
+      borderWidth: 1,
+      borderColor: colors.accentEdge,
+      backgroundColor: colors.accentSoft,
+      borderRadius: RADIUS.pill,
+      paddingHorizontal: SPACING.md - 2,
+      paddingVertical: 3,
+    },
+    planText: {
+      ...TYPE.caption,
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.accentText,
+    },
+    filters: {
+      marginBottom: SPACING.lg,
+    },
+    filterList: {
+      paddingHorizontal: SPACING.xl,
+      gap: SPACING.sm,
+    },
+    filterChip: {
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.lg,
+      minHeight: 38,
+      justifyContent: 'center',
+      borderRadius: RADIUS.pill,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    filterChipSelected: {
+      backgroundColor: colors.chipSelected,
+      borderColor: colors.chipSelected,
+    },
+    filterText: {
+      ...TYPE.caption,
+      color: colors.textSecondary,
+    },
+    filterTextSelected: {
+      color: colors.chipSelectedText,
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: SPACING.xl,
+    },
+    columnWrapper: {
+      gap: SPACING.md + 2,
+    },
+    gridContent: {
+      paddingBottom: SPACING.xxl,
+    },
+    skeletonGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      rowGap: SPACING.lg,
+    },
+    skeletonCell: {
+      width: '47.5%',
+    },
+    skeletonTile: {
+      aspectRatio: 1,
+      marginBottom: SPACING.sm + 2,
+    },
+    skeletonLine: {
+      marginBottom: SPACING.sm,
+    },
+    empty: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: SPACING.lg,
+      paddingBottom: SPACING.xxxl * 2,
+    },
+    emptyTitle: {
+      ...TYPE.title,
+      fontSize: 26,
+      color: colors.text,
+      textAlign: 'center',
+      marginTop: SPACING.xxl,
+    },
+    emptyBody: {
+      ...TYPE.body,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: SPACING.sm,
+      marginBottom: SPACING.xxl,
+    },
+  });

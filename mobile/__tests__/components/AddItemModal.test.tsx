@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 import * as ImagePicker from 'expo-image-picker';
 import { AddItemModal } from '../../src/components/AddItemModal';
 import { uploadItemApi, ApiError } from '../../src/api/client';
+import { AppProviders } from '../../test-utils/AppProviders';
 
 jest.mock('expo-image-picker', () => ({
   MediaTypeOptions: { Images: 'Images' },
@@ -28,7 +29,7 @@ async function renderModal(overrides: Partial<React.ComponentProps<typeof AddIte
     onLimitReached: jest.fn(),
     ...overrides,
   };
-  await render(<AddItemModal {...props} />);
+  await render(<AddItemModal {...props} />, { wrapper: AppProviders });
   return props;
 }
 
@@ -57,7 +58,7 @@ describe('AddItemModal', () => {
     (picker.launchCameraAsync as jest.Mock).mockResolvedValue(PICKED);
     await renderModal();
 
-    await fireEvent.press(screen.getByText('Take Photo'));
+    await fireEvent.press(screen.getByText('Take photo'));
 
     await waitFor(() => expect(picker.launchCameraAsync).toHaveBeenCalledTimes(1));
     expect(picker.requestCameraPermissionsAsync).toHaveBeenCalledTimes(1);
@@ -68,11 +69,9 @@ describe('AddItemModal', () => {
     const props = await renderModal();
 
     await fireEvent.press(screen.getByText('Gallery'));
-    await screen.findByText('Change Photo');
+    await screen.findByText('Change photo');
     await fireEvent.press(screen.getByText('T-Shirt'));
-    // "Add to Closet" is both the sheet title and the submit button; the button comes last.
-    const [, submitButton] = screen.getAllByText('Add to Closet');
-    await fireEvent.press(submitButton);
+    await fireEvent.press(screen.getByRole('button', { name: 'Add to closet' }));
 
     await waitFor(() => expect(props.onLimitReached).toHaveBeenCalledTimes(1));
     expect(props.onClose).toHaveBeenCalledTimes(1);

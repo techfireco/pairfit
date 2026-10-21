@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import AuthScreen from '../../app/auth';
+import { AppProviders } from '../../test-utils/AppProviders';
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn() }) }));
 jest.mock('../../src/context/AuthContext', () => ({
@@ -9,7 +10,7 @@ jest.mock('../../src/context/AuthContext', () => ({
 
 describe('AuthScreen', () => {
   it('does not show social sign-in buttons that are not wired up', async () => {
-    await render(<AuthScreen />);
+    await render(<AuthScreen />, { wrapper: AppProviders });
 
     expect(screen.queryByText(/continue with apple/i)).toBeNull();
     expect(screen.queryByText(/continue with google/i)).toBeNull();
@@ -17,10 +18,10 @@ describe('AuthScreen', () => {
   });
 
   it('still offers email sign-in and the legal links', async () => {
-    await render(<AuthScreen />);
+    await render(<AuthScreen />, { wrapper: AppProviders });
 
-    expect(screen.getByPlaceholderText('your.email@example.com')).toBeTruthy();
-    expect(screen.getAllByText('Sign In').length).toBeGreaterThan(0);
+    expect(screen.getByPlaceholderText('you@example.com')).toBeTruthy();
+    expect(screen.getAllByText('Sign in').length).toBeGreaterThan(0);
     expect(screen.getByText('Terms of Service')).toBeTruthy();
     expect(screen.getByText('Privacy Policy')).toBeTruthy();
   });

@@ -1,28 +1,27 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  RefreshControl,
-  Platform,
-} from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl, Platform } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ArrowRight, Plus } from 'lucide-react-native';
 import { Item, Recommendation, CATEGORY_LABELS } from '../../src/types';
 import { fetchItems, fetchRecommendationsApi } from '../../src/api/client';
-import { COLORS, SHADOWS } from '../../src/constants/theme';
+import { useTheme, useThemedStyles, Theme, TYPE, RADIUS, SPACING, MAX_FONT_SCALE } from '../../src/theme';
 import { MatchCard } from '../../src/components/MatchCard';
-import { Badge } from '../../src/components/Badge';
 import { ColorSwatch } from '../../src/components/ColorSwatch';
 import { ErrorBanner } from '../../src/components/ErrorBanner';
-import { Sparkles, Layers, ArrowRight, Shirt } from 'lucide-react-native';
+import { Button } from '../../src/components/Button';
+import { Skeleton } from '../../src/components/Skeleton';
+import { SwatchStack } from '../../src/components/SwatchStack';
 import { getColorName } from '../../src/utils/colorTheory';
+import { haptics } from '../../src/utils/haptics';
+
+const SKELETON_CARDS = [0, 1];
 
 export default function StyleThisScreen() {
+  const { colors } = useTheme().theme;
+  const styles = useThemedStyles(makeStyles);
   const [closet, setCloset] = useState<Item[]>([]);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -38,21 +37,9 @@ export default function StyleThisScreen() {
   const loadCloset = useCallback(async () => {
     try {
       const data = await fetchItems();
-
-      // Prefetch items for instant rendering
-      data.forEach((item) => {
-        if (item.photoUrl) {
-          Image.prefetch(item.photoUrl);
-        }
-      });
-
       setCloset((prev) => {
         const prevUrlMap = new Map(prev.map((i) => [i.id, i.photoUrl]));
-        const merged = data.map((item) => ({
-          ...item,
-          photoUrl: prevUrlMap.get(item.id) || item.photoUrl,
-        }));
-        return merged;
+        return data.map((item) => ({ ...item, photoUrl: prevUrlMap.get(item.id) || item.photoUrl }));
       });
 
       if (data.length > 0) {
@@ -87,12 +74,6 @@ export default function StyleThisScreen() {
     setError(null);
     try {
       const res = await fetchRecommendationsApi(item.id);
-      // Prefetch match item photos
-      res.recommendations.forEach((rec) => {
-        if (rec.item.photoUrl) {
-          Image.prefetch(rec.item.photoUrl);
-        }
-      });
       setRecommendations(res.recommendations);
     } catch (err: any) {
       setError(err);
@@ -103,11 +84,8 @@ export default function StyleThisScreen() {
   }, []);
 
   useEffect(() => {
-    if (selectedItem) {
-      loadRecommendations(selectedItem);
-    } else {
-      setRecommendations([]);
-    }
+    if (selectedItem) loadRecommendations(selectedItem);
+    else setRecommendations([]);
   }, [selectedItem, loadRecommendations]);
 
   const onRefresh = () => {
@@ -116,167 +94,140 @@ export default function StyleThisScreen() {
   };
 
   const handleSelectItem = useCallback((item: Item) => {
-    setSelectedItem((prev) => (prev?.id === item.id ? prev : item));
+    setSelectedItem((prev) => {
+      if (prev?.id === item.id) return prev;
+      haptics.selection();
+      return item;
+    });
   }, []);
 
   const renderMatchCard = useCallback(
-    ({ item }: { item: Recommendation }) => (
-      <MatchCard recommendation={item} anchorItem={selectedItem} />
+    ({ item, index }: { item: Recommendation; index: number }) => (
+      <MatchCard recommendation={item} anchorItem={selectedItem} index={index} />
     ),
     [selectedItem]
   );
 
   const keyExtractor = useCallback((item: Recommendation) => item.item.id, []);
+  const topInset = { paddingTop: Math.max(insets.top, SPACING.lg) };
 
   if (isLoadingCloset) {
     return (
-      <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={COLORS.obsidian} />
-          <Text style={styles.loadingText}>Opening wardrobe styling…</Text>
+      <View style={[styles.screen, topInset, styles.padded]} accessibilityLabel="Loading">
+        <Skeleton width="55%" height={34} style={styles.skeletonTitle} />
+        <View style={styles.skeletonRow}>
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} width={68} height={68} radius={RADIUS.lg} />
+          ))}
         </View>
+        <Skeleton height={140} radius={RADIUS.lg + 2} />
       </View>
     );
   }
 
   if (closet.length === 0) {
     return (
-      <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconWrap}>
-            <Shirt size={36} color={COLORS.obsidian} />
-          </View>
-          <Text style={styles.emptyTitle}>Add clothes to style outfits</Text>
-          <Text style={styles.emptySubtitle}>
-            PairFit matches items across your wardrobe using color theory. Upload pieces into your closet first to see recommendations.
-          </Text>
-          <TouchableOpacity
-            style={[styles.emptyBtn, SHADOWS.button]}
-            onPress={() => router.push('/(tabs)/closet')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.emptyBtnText}>Go to My Closet</Text>
-            <ArrowRight size={16} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.screen, topInset, styles.emptyScreen]}>
+        <SwatchStack size={110} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          Nothing to style yet
+        </Text>
+        <Text style={styles.emptyBody}>Add a few pieces to your closet and we'll pair them by color.</Text>
+        <Button
+          title="Go to my closet"
+          onPress={() => router.push('/(tabs)/closet')}
+          size="lg"
+          icon={<ArrowRight size={18} color={colors.textOnAccent} />}
+          iconPosition="right"
+        />
       </View>
     );
   }
 
-  const selectedCategoryLabel = selectedItem
-    ? CATEGORY_LABELS[selectedItem.category] || selectedItem.category
-    : '';
-
+  const selectedCategoryLabel = selectedItem ? CATEGORY_LABELS[selectedItem.category] || selectedItem.category : '';
   const selectedColorName = selectedItem
     ? getColorName(selectedItem.h, selectedItem.s, selectedItem.l, selectedItem.colorHex)
     : '';
 
-  // Render header component for FlatList
-  const ListHeader = (
+  const listHeader = (
     <View>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Style This</Text>
-        <Text style={styles.subtitle}>Pick any item to see color-ranked matches</Text>
+        <Text style={styles.overline}>Color match</Text>
+        <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Style this
+        </Text>
+        <Text style={styles.subtitle}>Pick a piece to see what goes with it</Text>
       </View>
 
-      {/* Horizontal Closet Item Selector */}
-      <View style={styles.selectorSection}>
-        <Text style={styles.sectionLabel}>Select Anchor Piece</Text>
-        <View style={styles.horizontalScrollWrap}>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={closet}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.selectorList}
-            initialNumToRender={8}
-            maxToRenderPerBatch={8}
-            renderItem={({ item }) => {
-              const isSelected = selectedItem?.id === item.id;
-              return (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => handleSelectItem(item)}
-                  style={[
-                    styles.anchorThumbCard,
-                    isSelected && styles.anchorThumbCardSelected,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.thumbImageContainer,
-                      item.colorHex ? { backgroundColor: `${item.colorHex}18` } : null,
-                    ]}
-                  >
-                    <Image
-                      source={{ uri: item.thumbnailUrl || item.photoUrl }}
-                      style={styles.thumbImage}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                      transition={100}
-                      recyclingKey={item.id}
-                    />
-                  </View>
-                  <Text style={styles.thumbName} numberOfLines={1}>
-                    {item.name || 'Piece'}
-                  </Text>
-                  {isSelected && (
-                    <View style={styles.selectedDot}>
-                      <View style={styles.selectedDotInner} />
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </View>
-      </View>
-
-      {/* Selected Anchor Hero Card */}
-      {selectedItem && (
-        <View style={[styles.heroCard, SHADOWS.card]}>
-          <View style={styles.heroRow}>
-            <View
-              style={[
-                styles.heroImageContainer,
-                selectedItem.colorHex ? { backgroundColor: `${selectedItem.colorHex}18` } : null,
-              ]}
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={closet}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.selectorList}
+        style={styles.selector}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        renderItem={({ item }) => {
+          const isSelected = selectedItem?.id === item.id;
+          return (
+            <Pressable
+              onPress={() => handleSelectItem(item)}
+              accessibilityRole="button"
+              accessibilityLabel={item.name || 'Piece'}
+              accessibilityState={{ selected: isSelected }}
+              style={styles.anchorOption}
             >
-              <Image
-                source={{ uri: selectedItem.photoUrl }}
-                style={styles.heroImage}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                transition={100}
-                recyclingKey={selectedItem.id}
-              />
-            </View>
-            <View style={styles.heroInfo}>
-              <View style={styles.heroTagRow}>
-                <View style={styles.anchorBadge}>
-                  <Sparkles size={11} color="#6D28D9" />
-                  <Text style={styles.anchorBadgeText}>ANCHOR PIECE</Text>
-                </View>
+              <View
+                style={[
+                  styles.anchorThumb,
+                  item.colorHex ? { backgroundColor: `${item.colorHex}26` } : null,
+                  isSelected && styles.anchorThumbSelected,
+                ]}
+              >
+                <Image
+                  source={{ uri: item.thumbnailUrl || item.photoUrl }}
+                  style={styles.fill}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={100}
+                  recyclingKey={item.id}
+                  accessibilityIgnoresInvertColors
+                />
               </View>
-
-              <Text style={styles.heroTitle} numberOfLines={2}>
-                {selectedItem.name || 'Untitled Piece'}
+              <Text style={[styles.anchorName, isSelected && styles.anchorNameSelected]} numberOfLines={1}>
+                {item.name || 'Piece'}
               </Text>
+            </Pressable>
+          );
+        }}
+      />
 
-              <View style={styles.heroMetaRow}>
-                <Badge label={selectedCategoryLabel} variant="category" />
-                <ColorSwatch hex={selectedItem.colorHex} size={14} showHex />
-                <Text style={styles.heroColorName} numberOfLines={1}>
-                  {selectedColorName}
-                </Text>
-              </View>
-            </View>
+      {selectedItem && (
+        <Animated.View key={selectedItem.id} entering={FadeIn.duration(240)} style={styles.hero}>
+          <View style={[styles.heroImage, selectedItem.colorHex ? { backgroundColor: `${selectedItem.colorHex}26` } : null]}>
+            <Image
+              source={{ uri: selectedItem.photoUrl }}
+              placeholder={{ uri: selectedItem.thumbnailUrl }}
+              style={styles.fill}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+              recyclingKey={selectedItem.id}
+              accessibilityIgnoresInvertColors
+            />
           </View>
-        </View>
+          <View style={styles.heroInfo}>
+            <Text style={styles.heroOverline}>Styling</Text>
+            <Text style={styles.heroTitle} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {selectedItem.name || 'Untitled piece'}
+            </Text>
+            <Text style={styles.heroMeta}>{selectedCategoryLabel}</Text>
+            <ColorSwatch hex={selectedItem.colorHex} size={12} label={selectedColorName} style={styles.heroSwatch} />
+          </View>
+        </Animated.View>
       )}
 
-      {/* Error Notification */}
       {error && (
         <ErrorBanner
           error={error}
@@ -285,355 +236,230 @@ export default function StyleThisScreen() {
         />
       )}
 
-      {/* Results Header */}
-      <View style={styles.resultsHeaderRow}>
-        <Text style={styles.resultsTitle}>Ranked Matches</Text>
+      <View style={styles.resultsHeader}>
+        <Text style={styles.resultsTitle} accessibilityRole="header">
+          Best matches
+        </Text>
         {recommendations.length > 0 && (
           <Text style={styles.resultsCount}>
-            {recommendations.length} {recommendations.length === 1 ? 'pairing' : 'pairings'} found
+            {recommendations.length} {recommendations.length === 1 ? 'match' : 'matches'}
           </Text>
         )}
       </View>
     </View>
   );
 
-  const ListEmpty = (
-    <View>
-      {isLoadingRecs ? (
-        <View style={styles.recsLoadingBox}>
-          <ActivityIndicator size="small" color={COLORS.obsidian} />
-          <Text style={styles.recsLoadingText}>Finding best matches…</Text>
-        </View>
-      ) : !error ? (
-        <View style={styles.noMatchesBox}>
-          <View style={styles.noMatchesIcon}>
-            <Layers size={24} color={COLORS.obsidian} />
-          </View>
-          <Text style={styles.noMatchesTitle}>No matching items yet</Text>
-          <Text style={styles.noMatchesText}>
-            Add more clothes in a pairing category (e.g. bottoms if you picked a top, or jackets to layer).
-          </Text>
-          <TouchableOpacity
-            style={styles.addMoreBtn}
-            onPress={() => router.push('/(tabs)/closet')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.addMoreBtnText}>Add More Clothes</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
+  const listEmpty = isLoadingRecs ? (
+    <View accessibilityLabel="Finding matches">
+      {SKELETON_CARDS.map((i) => (
+        <Skeleton key={i} height={150} radius={RADIUS.lg + 2} style={styles.skeletonCard} />
+      ))}
     </View>
-  );
+  ) : !error ? (
+    <View style={styles.noMatches}>
+      <Text style={styles.noMatchesTitle}>No matches yet</Text>
+      <Text style={styles.noMatchesBody}>
+        Add pieces from another group: bottoms for a top, or a jacket to layer.
+      </Text>
+      <Button
+        title="Add pieces"
+        variant="secondary"
+        size="sm"
+        onPress={() => router.push('/(tabs)/closet')}
+        icon={<Plus size={16} color={colors.text} />}
+      />
+    </View>
+  ) : null;
 
   return (
-    <View style={[styles.screen, { paddingTop: Math.max(insets.top, 16) }]}>
+    <View style={[styles.screen, topInset]}>
       <FlatList
-        data={recommendations}
+        data={isLoadingRecs ? [] : recommendations}
         renderItem={renderMatchCard}
         keyExtractor={keyExtractor}
-        ListHeaderComponent={ListHeader}
-        ListEmptyComponent={ListEmpty}
-        contentContainerStyle={styles.container}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         initialNumToRender={4}
         maxToRenderPerBatch={4}
         windowSize={5}
         removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={COLORS.obsidian}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} />
         }
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  container: {
-    paddingHorizontal: 20,
-    paddingBottom: 32,
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#4B5563',
-    fontWeight: '500',
-  },
-  header: {
-    marginBottom: 16,
-    paddingRight: 48,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    fontSize: 13.5,
-    color: '#4B5563',
-    marginTop: 2,
-  },
-  selectorSection: {
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 10,
-  },
-  horizontalScrollWrap: {
-    marginHorizontal: -20,
-  },
-  selectorList: {
-    paddingHorizontal: 20,
-    gap: 10,
-    paddingVertical: 4,
-  },
-  anchorThumbCard: {
-    width: 84,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 6,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.borderLight,
-    position: 'relative',
-    minHeight: 104,
-  },
-  anchorThumbCardSelected: {
-    borderColor: COLORS.obsidian,
-    backgroundColor: '#FFFFFF',
-  },
-  thumbImageContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: COLORS.cardMuted,
-    marginBottom: 6,
-  },
-  thumbImage: {
-    width: '100%',
-    height: '100%',
-  },
-  thumbName: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.obsidian,
-    textAlign: 'center',
-  },
-  selectedDot: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: COLORS.obsidian,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedDotInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#FFFFFF',
-  },
-  heroCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    marginBottom: 16,
-  },
-  heroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  heroImageContainer: {
-    width: 90,
-    height: 90,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: COLORS.cardMuted,
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  heroInfo: {
-    flex: 1,
-  },
-  heroTagRow: {
-    flexDirection: 'row',
-    marginBottom: 6,
-  },
-  anchorBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 9999,
-    borderWidth: 1,
-    borderColor: '#DDD6FE',
-  },
-  anchorBadgeText: {
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: '#6D28D9',
-    letterSpacing: 0.5,
-  },
-  heroTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    lineHeight: 21,
-    marginBottom: 6,
-  },
-  heroMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  heroColorName: {
-    fontSize: 11.5,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-    flexShrink: 1,
-  },
-  resultsHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    marginTop: 4,
-  },
-  resultsTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-  },
-  resultsCount: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: '#4B5563',
-  },
-  recsLoadingBox: {
-    paddingVertical: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  recsLoadingText: {
-    fontSize: 13.5,
-    color: '#4B5563',
-    fontWeight: '500',
-  },
-  noMatchesBox: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  noMatchesIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.cardMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  noMatchesTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.obsidian,
-    marginBottom: 6,
-  },
-  noMatchesText: {
-    fontSize: 13,
-    color: '#4B5563',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  addMoreBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 9999,
-    backgroundColor: COLORS.obsidian,
-    minHeight: 42,
-    justifyContent: 'center',
-  },
-  addMoreBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.cardMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#4B5563',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  emptyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.obsidian,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 9999,
-    minHeight: 48,
-  },
-  emptyBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
-});
+const makeStyles = ({ colors }: Theme) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.canvas,
+    },
+    padded: {
+      paddingHorizontal: SPACING.xl,
+    },
+    fill: {
+      width: '100%',
+      height: '100%',
+    },
+    listContent: {
+      paddingHorizontal: SPACING.xl,
+      paddingBottom: SPACING.xxxl,
+    },
+    header: {
+      marginBottom: SPACING.lg,
+    },
+    overline: {
+      ...TYPE.overline,
+      color: colors.accentText,
+      marginBottom: 2,
+    },
+    title: {
+      ...TYPE.display,
+      color: colors.text,
+    },
+    subtitle: {
+      ...TYPE.body,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    selector: {
+      marginHorizontal: -SPACING.xl,
+      marginBottom: SPACING.lg,
+    },
+    selectorList: {
+      paddingHorizontal: SPACING.xl,
+      gap: SPACING.md,
+    },
+    anchorOption: {
+      width: 72,
+      alignItems: 'center',
+    },
+    anchorThumb: {
+      width: 68,
+      height: 68,
+      borderRadius: RADIUS.lg,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    anchorThumbSelected: {
+      borderColor: colors.accent,
+    },
+    anchorName: {
+      ...TYPE.caption,
+      fontSize: 12,
+      color: colors.textMuted,
+      marginTop: 6,
+    },
+    anchorNameSelected: {
+      color: colors.text,
+    },
+    hero: {
+      flexDirection: 'row',
+      gap: SPACING.lg,
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.lg + 2,
+      borderWidth: 1,
+      borderColor: colors.accentEdge,
+      padding: SPACING.md,
+      marginBottom: SPACING.lg,
+    },
+    heroImage: {
+      width: 112,
+      height: 112,
+      borderRadius: RADIUS.md + 2,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceRaised,
+    },
+    heroInfo: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    heroOverline: {
+      ...TYPE.overline,
+      color: colors.accentText,
+      marginBottom: 4,
+    },
+    heroTitle: {
+      ...TYPE.heading,
+      color: colors.text,
+    },
+    heroMeta: {
+      ...TYPE.caption,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    heroSwatch: {
+      marginTop: SPACING.sm,
+    },
+    resultsHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      marginBottom: SPACING.md,
+    },
+    resultsTitle: {
+      ...TYPE.heading,
+      color: colors.text,
+    },
+    resultsCount: {
+      ...TYPE.caption,
+      color: colors.textMuted,
+    },
+    skeletonTitle: {
+      marginBottom: SPACING.xl,
+    },
+    skeletonRow: {
+      flexDirection: 'row',
+      gap: SPACING.md,
+      marginBottom: SPACING.xl,
+    },
+    skeletonCard: {
+      marginBottom: SPACING.md,
+    },
+    noMatches: {
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.lg + 2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      padding: SPACING.xxl,
+    },
+    noMatchesTitle: {
+      ...TYPE.subheading,
+      color: colors.text,
+    },
+    noMatchesBody: {
+      ...TYPE.caption,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: SPACING.xs,
+      marginBottom: SPACING.lg,
+    },
+    emptyScreen: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: SPACING.xxxl,
+    },
+    emptyTitle: {
+      ...TYPE.title,
+      fontSize: 26,
+      color: colors.text,
+      textAlign: 'center',
+      marginTop: SPACING.xxl,
+    },
+    emptyBody: {
+      ...TYPE.body,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: SPACING.sm,
+      marginBottom: SPACING.xxl,
+    },
+  });

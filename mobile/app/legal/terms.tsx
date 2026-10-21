@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
-import { COLORS } from '../../src/constants/theme';
+import { View, Text, ScrollView, SafeAreaView } from 'react-native';
+import { useThemedStyles } from '../../src/theme';
+import { makeLegalStyles } from '../../src/components/legalStyles';
 
 export default function TermsOfServiceScreen() {
+  const styles = useThemedStyles(makeLegalStyles);
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -69,38 +71,3 @@ export default function TermsOfServiceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  container: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.obsidian,
-    marginBottom: 4,
-  },
-  lastUpdated: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 20,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  heading: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.obsidian,
-    marginBottom: 6,
-  },
-  body: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: COLORS.charcoal,
-  },
-});

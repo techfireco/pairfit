@@ -37,7 +37,10 @@ You are building the official PairFit native mobile client (iOS & Android) with 
    - No prices, trials or purchase buttons until real in-app purchases exist (store rejection risk).
 6. **Two-Tap Delete UX**:
    - Two-tap inline confirmation: First tap arms button ("Tap again to confirm remove", auto-disarms after 4s), second tap executes `DELETE /api/items/:id`. No native alert popups.
-7. **Design Aesthetics**:
-   - 2026 luxury fashion-tech startup aesthetic.
-   - Light mode first: Canvas `#FAF9F6`, card surfaces `#FFFFFF`, obsidian pill buttons `#111111`.
-   - 20px card radius, full-pill action buttons (`rounded-full`), soft floating elevation.
+7. **Design System — "Noir"** (`src/theme/`):
+   - Dark-first, CRED-inspired: canvas `#0D0D0F`, ivory text `#F4F1EA`, champagne gold `#D9B97A` as the only accent. Light mode (ivory paper) is a full peer, chosen in Profile → Appearance (Dark / Light / System, stored in AsyncStorage).
+   - Never hard-code colors: read them from `useTheme()` and build styles with `useThemedStyles(makeStyles)` (module-level factory). Text tokens are contract-tested for WCAG AA in `__tests__/theme`.
+   - Type: Space Grotesk for headings, numbers and buttons; Inter for reading text (`TYPE` tokens). Spacing/radius from `SPACING` / `RADIUS`.
+   - Primary actions use the 3D "pop" `Button` (gold face on a bronze edge, sinks on press, haptic). Secondary actions are flat.
+   - Motion via Reanimated (entering fades, score ring fill); haptics via `src/utils/haptics.ts`; quick confirmations via `useToast()`, not `Alert`.
+   - Every icon-only control needs an `accessibilityLabel`; decorative views use `aria-hidden`.

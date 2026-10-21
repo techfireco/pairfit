@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert } from 'react-native';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import ProfileScreen from '../../app/(tabs)/profile';
+import { AppProviders } from '../../test-utils/AppProviders';
 
 const mockReplace = jest.fn();
 const mockDeleteAccount = jest.fn();
@@ -32,18 +33,35 @@ beforeEach(() => {
 
 describe('ProfileScreen', () => {
   it('shows the free-plan usage without any upgrade or purchase button', async () => {
-    await render(<ProfileScreen />);
+    await render(<ProfileScreen />, { wrapper: AppProviders });
 
-    expect(screen.getAllByText('12 / 30 items (Free plan)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('12 of 30 pieces').length).toBeGreaterThan(0);
     expect(screen.queryByText(/upgrade/i)).toBeNull();
+  });
+
+  it('starts in dark mode and lets the person switch to light', async () => {
+    await render(<ProfileScreen />, { wrapper: AppProviders });
+
+    const dark = screen.getByRole('radio', { name: 'Dark appearance' });
+    const light = screen.getByRole('radio', { name: 'Light appearance' });
+    expect(dark.props.accessibilityState).toMatchObject({ checked: true });
+
+    await fireEvent.press(light);
+
+    expect(screen.getByRole('radio', { name: 'Light appearance' }).props.accessibilityState).toMatchObject({
+      checked: true,
+    });
+    expect(screen.getByRole('radio', { name: 'Dark appearance' }).props.accessibilityState).toMatchObject({
+      checked: false,
+    });
   });
 
   it('returns to the welcome screen after the account is deleted', async () => {
     mockDeleteAccount.mockResolvedValue({});
     confirmNextAlert();
-    await render(<ProfileScreen />);
+    await render(<ProfileScreen />, { wrapper: AppProviders });
 
-    await fireEvent.press(screen.getByText('Delete Account'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete account' }));
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/welcome'));
     expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
@@ -53,9 +71,9 @@ describe('ProfileScreen', () => {
     mockDeleteAccount.mockResolvedValue({ error: 'Something went wrong on our side.' });
     confirmNextAlert();
     const alertSpy = jest.spyOn(Alert, 'alert');
-    await render(<ProfileScreen />);
+    await render(<ProfileScreen />, { wrapper: AppProviders });
 
-    await fireEvent.press(screen.getByText('Delete Account'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete account' }));
 
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith('Error', 'Something went wrong on our side.')
